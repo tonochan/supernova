@@ -179,6 +179,7 @@ body {
     border-radius 0.15s ease,
     top 0.15s ease, right 0.15s ease, bottom 0.15s ease, left 0.15s ease;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   font-family: "Fredoka", sans-serif;
@@ -191,6 +192,18 @@ body {
 }
 
 .tile .sym { font-size: var(--fs, 26px); line-height: 1; }
+
+/* 元素名(記号の下に小さく) */
+.tile .name {
+  font-size: var(--fs-name, 8px);
+  font-weight: 500;
+  line-height: 1;
+  margin-top: 3px;
+  opacity: 0.72;
+  max-width: 94%;
+  overflow: hidden;
+  white-space: nowrap;
+}
 
 /* 原子番号(周期表と同じく左上に小さく) */
 .tile .mass {
@@ -290,6 +303,30 @@ body {
 @keyframes rise {
   from { opacity: 1; translate: 0 0; }
   to   { opacity: 0; translate: 0 -46px; }
+}
+
+/* 新元素発見のトースト */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translate(-50%, 8px);
+  z-index: 6;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(13, 18, 40, 0.92);
+  border: 1px solid rgba(244, 201, 93, 0.55);
+  color: var(--gold);
+  font-weight: 600;
+  font-size: clamp(11px, 3vw, 14px);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* ---- フッター ---- */

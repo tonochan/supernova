@@ -27,6 +27,29 @@ const ELEMENTS = [
   "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
 ];
 
+const ELEMENT_NAMES = [
+  "Hydrogen", "Helium", "Lithium", "Beryllium", "Boron", "Carbon", "Nitrogen", "Oxygen", "Fluorine", "Neon",
+  "Sodium", "Magnesium", "Aluminium", "Silicon", "Phosphorus", "Sulfur", "Chlorine", "Argon", "Potassium", "Calcium",
+  "Scandium", "Titanium", "Vanadium", "Chromium", "Manganese", "Iron", "Cobalt", "Nickel", "Copper", "Zinc",
+  "Gallium", "Germanium", "Arsenic", "Selenium", "Bromine", "Krypton", "Rubidium", "Strontium", "Yttrium", "Zirconium",
+  "Niobium", "Molybdenum", "Technetium", "Ruthenium", "Rhodium", "Palladium", "Silver", "Cadmium", "Indium", "Tin",
+  "Antimony", "Tellurium", "Iodine", "Xenon", "Caesium", "Barium", "Lanthanum", "Cerium", "Praseodymium", "Neodymium",
+  "Promethium", "Samarium", "Europium", "Gadolinium", "Terbium", "Dysprosium", "Holmium", "Erbium", "Thulium", "Ytterbium",
+  "Lutetium", "Hafnium", "Tantalum", "Tungsten", "Rhenium", "Osmium", "Iridium", "Platinum", "Gold", "Mercury",
+  "Thallium", "Lead", "Bismuth", "Polonium", "Astatine", "Radon", "Francium", "Radium", "Actinium", "Thorium",
+  "Protactinium", "Uranium", "Neptunium", "Plutonium", "Americium", "Curium", "Berkelium", "Californium", "Einsteinium", "Fermium",
+  "Mendelevium", "Nobelium", "Lawrencium", "Rutherfordium", "Dubnium", "Seaborgium", "Bohrium", "Hassium", "Meitnerium", "Darmstadtium",
+  "Roentgenium", "Copernicium", "Nihonium", "Flerovium", "Moscovium", "Livermorium", "Tennessine", "Oganesson",
+];
+
+// 各色の「軽い→重い」カラーランプ。育つほど深く濃い色になる
+const COLOR_RAMP = {
+  red: [[248, 172, 156], [222, 74, 58]],
+  yellow: [[248, 212, 128], [230, 156, 26]],
+  green: [[128, 228, 184], [14, 176, 118]],
+  blue: [[150, 184, 248], [56, 100, 224]],
+};
+
 const boardEl = document.getElementById("board");
 const scoreEl = document.getElementById("score");
 const bestEl = document.getElementById("best");
@@ -63,12 +86,31 @@ function fmt(v) {
   return String(v);
 }
 
-function fontSizeFor(text, el) {
-  // 盤面幅に対する相対サイズ。桁数が増えたら縮める
+// 星屑の成長度 0..1(H=0、Fe直前=1)
+function growthT(tile) {
+  return Math.min((tile.value - 1) / (NOVA_AT - 1), 1);
+}
+
+// 育つほど色が深まり、中心に「熱い核」の光が生まれる
+function bgFor(tile) {
+  const t = growthT(tile);
+  const [lo, hi] = COLOR_RAMP[tile.color];
+  const mix = lo.map((v, i) => Math.round(v + (hi[i] - v) * t));
+  const coreA = (0.12 + 0.68 * t).toFixed(2);
+  const coreR = Math.round(16 + 36 * t);
+  return `radial-gradient(circle at 50% 36%, rgba(255,255,255,${coreA}) 0%, rgba(255,255,255,0) ${coreR}%), rgb(${mix.join(",")})`;
+}
+
+function sizeTile(tile) {
+  // 盤面幅に対する相対サイズ。桁数で縮め、成長度で育てる
   const base = boardEl.clientWidth / SIZE;
-  const scale = text.length <= 2 ? 0.4 : text.length <= 3 ? 0.34 : text.length <= 4 ? 0.28 : 0.24;
-  el.style.setProperty("--fs", `${Math.round(base * scale)}px`);
-  el.style.setProperty("--fs-mass", `${Math.round(base * 0.15)}px`);
+  const text = tile.symEl.textContent;
+  let scale = text.length <= 2 ? 0.34 : text.length <= 3 ? 0.29 : 0.25;
+  if (tile.value < HOLE_AT) scale *= 1 + 0.22 * growthT(tile);
+  tile.el.style.setProperty("--fs", `${Math.round(base * scale)}px`);
+  tile.el.style.setProperty("--fs-mass", `${Math.round(base * 0.13)}px`);
+  const name = tile.nameEl.textContent;
+  tile.el.style.setProperty("--fs-name", `${Math.round(base * (name.length > 9 ? 0.085 : 0.105))}px`);
 }
 
 function setTilePos(tile) {
@@ -77,18 +119,31 @@ function setTilePos(tile) {
 
 function refreshTileFace(tile) {
   tile.el.dataset.color = keyOf(tile);
-  let symText, massText;
+  const face = tile.faceEl.style;
   if (tile.value >= HOLE_AT) {
     // 周期表の外側:質量だけのブラックホール
-    symText = fmt(tile.value);
-    massText = "";
+    tile.symEl.textContent = fmt(tile.value);
+    tile.massEl.textContent = "";
+    tile.nameEl.textContent = "black hole";
+    face.background = "";
+    face.color = "";
+    face.textShadow = "";
   } else {
-    symText = ELEMENTS[tile.value - 1];
-    massText = String(tile.value);
+    tile.symEl.textContent = ELEMENTS[tile.value - 1];
+    tile.massEl.textContent = String(tile.value);
+    tile.nameEl.textContent = ELEMENT_NAMES[tile.value - 1];
+    if (tierOf(tile) === "nova") {
+      face.background = "";
+      face.color = "";
+      face.textShadow = "";
+    } else {
+      const t = growthT(tile);
+      face.background = bgFor(tile);
+      face.color = t > 0.55 ? "#fff" : "";
+      face.textShadow = t > 0.55 ? "0 1px 6px rgba(0,0,0,0.35)" : "";
+    }
   }
-  tile.symEl.textContent = symText;
-  tile.massEl.textContent = massText;
-  fontSizeFor(symText, tile.el);
+  sizeTile(tile);
 }
 
 // ---------- タイル生成 ----------
@@ -102,11 +157,14 @@ function makeTile(value, color, r, c, spawnFromRow = null) {
   mass.className = "mass";
   const sym = document.createElement("span");
   sym.className = "sym";
+  const name = document.createElement("span");
+  name.className = "name";
   face.appendChild(mass);
   face.appendChild(sym);
+  face.appendChild(name);
   el.appendChild(face);
 
-  const tile = { id: nextId++, value, color, r, c, el, symEl: sym, massEl: mass, faceEl: face };
+  const tile = { id: nextId++, value, color, r, c, el, symEl: sym, massEl: mass, nameEl: name, faceEl: face };
   refreshTileFace(tile);
 
   if (spawnFromRow !== null) {
@@ -227,6 +285,34 @@ function hasMove() {
   return false;
 }
 
+// ---------- 元素の発見コレクション ----------
+
+const FOUND_KEY = "supernova-found";
+// 0 はブラックホールの印。H(1)は最初から知っている
+const found = new Set(JSON.parse(localStorage.getItem(FOUND_KEY) || "[1]"));
+
+const toastEl = document.getElementById("toast");
+let toastTimer = null;
+
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2400);
+}
+
+function noteDiscovery(value) {
+  const id = value >= HOLE_AT ? 0 : value;
+  if (found.has(id)) return;
+  found.add(id);
+  localStorage.setItem(FOUND_KEY, JSON.stringify([...found]));
+  if (id === 0) {
+    toast("✦ You made a BLACK HOLE! ✦");
+  } else {
+    toast(`✦ New element! ${value} ${ELEMENTS[value - 1]} — ${ELEMENT_NAMES[value - 1]}`);
+  }
+}
+
 // ---------- サウンド(短いポップ音) ----------
 
 let audioCtx = null;
@@ -295,6 +381,7 @@ function onTap(tile) {
     setTimeout(() => tile.el.classList.remove("pop", "target", "promoted"), 500);
 
     addScore(total, tile.r, tile.c);
+    noteDiscovery(total);
     blip(total);
 
     if (!firstMergeDone) {
@@ -403,7 +490,7 @@ window.addEventListener("resize", () => {
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
       const t = grid?.[r]?.[c];
-      if (t) fontSizeFor(t.symEl.textContent, t.el);
+      if (t) sizeTile(t);
     }
   }
 });
