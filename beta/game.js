@@ -84,6 +84,10 @@ const STR = {
     hs4: "Push past <strong>Og (118)</strong> and novas collapse into a <strong>black hole</strong>. Holes devour each other, too.",
     hs5: "When nothing can fuse, the sky is full — game over. Can you light up all <strong>118 elements</strong> on the periodic table?",
     gotIt: "Got it",
+    backTitle: "Back to title?",
+    backText: "Your current game will be lost.",
+    backYes: "Back to title",
+    backNo: "Cancel",
     ptLabel: " / 118 elements",
     ptHole: "· ● black hole",
     holeName: "black hole",
@@ -110,6 +114,10 @@ const STR = {
     hs4: "<strong>Og(118)</strong>を超えると<strong>ブラックホール</strong>に崩壊。ブラックホール同士も融合できる。",
     hs5: "どこも融合できなくなったらゲームオーバー。周期表の<strong>118元素</strong>をすべて光らせよう!",
     gotIt: "わかった",
+    backTitle: "ホームにもどる?",
+    backText: "いまのゲームは終了します。",
+    backYes: "もどる",
+    backNo: "キャンセル",
     ptLabel: " / 118 元素",
     ptHole: "· ● ブラックホール",
     holeName: "ブラックホール",
@@ -285,7 +293,9 @@ function makeTile(value, color, r, c, spawnFromRow = null) {
 }
 
 function randomColor() {
-  return COLORS[Math.floor(Math.random() * COLORS.length)];
+  // 序盤は3色。初めて超新星を作ったら4色目(blue)が降りはじめる
+  const count = maxTile >= NOVA_AT ? 4 : 3;
+  return COLORS[Math.floor(Math.random() * count)];
 }
 
 // 降ってくる元素。基本は軽い元素ほど多く、ゲームが進むほど上限が上がる
@@ -653,9 +663,6 @@ function newGame() {
 }
 
 document.getElementById("restart").addEventListener("click", newGame);
-document.getElementById("reset").addEventListener("click", () => {
-  if (!busy) newGame();
-});
 
 // ---------- タイトル画面とヘルプ ----------
 
@@ -679,6 +686,24 @@ helpModal.addEventListener("click", (e) => {
   if (e.target === helpModal) helpModal.classList.add("hidden");
 });
 
+// 戻るボタン → 確認モーダル → ホーム(タイトル)へ。ゲームはリセットされる
+const backModal = document.getElementById("back-modal");
+
+document.getElementById("back-btn").addEventListener("click", () => {
+  if (!busy) backModal.classList.remove("hidden");
+});
+document.getElementById("back-no").addEventListener("click", () => {
+  backModal.classList.add("hidden");
+});
+backModal.addEventListener("click", (e) => {
+  if (e.target === backModal) backModal.classList.add("hidden");
+});
+document.getElementById("back-yes").addEventListener("click", () => {
+  backModal.classList.add("hidden");
+  newGame();
+  titleScreen.classList.remove("gone");
+});
+
 // ---------- 言語の適用と切替 ----------
 
 function applyLang() {
@@ -691,13 +716,16 @@ function applyLang() {
   setText("score-label", s.scoreL);
   setText("best-label", s.bestL);
   setText("hint", s.hint);
-  setText("reset", s.restart);
   setText("over-title", s.overTitle);
   setText("final-score-label", s.overScoreL);
   setText("new-best", s.newBest);
   setText("restart", s.newGameBtn);
   setText("help-title", s.helpTitle);
   setText("help-close", s.gotIt);
+  setText("back-title", s.backTitle);
+  setText("back-text", s.backText);
+  setText("back-yes", s.backYes);
+  setText("back-no", s.backNo);
   setText("pt-label", s.ptLabel);
   setText("pt-hole", s.ptHole);
   setText("lang-btn", s.langBtn);
