@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#141a33">
+<title>SUPERNOVA</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💥</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="sky"></div>
+<div class="nebula"></div>
+
+<main class="app">
+  <header class="top">
+    <h1 class="logo">SUPER<span class="n r">N</span><span class="n y">O</span><span class="n g">V</span><span class="n b">A</span></h1>
+    <div class="scores">
+      <div class="chip">
+        <span class="chip-label">SCORE</span>
+        <span class="chip-value" id="score">0</span>
+      </div>
+      <div class="chip chip-best">
+        <span class="chip-label">BEST</span>
+        <span class="chip-value" id="best">0</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="board-wrap">
+    <div class="board" id="board"></div>
+    <div class="toast" id="toast"></div>
+
+    <div class="overlay hidden" id="overlay">
+      <div class="overlay-card">
+        <p class="overlay-title">No more fusions!</p>
+        <p class="overlay-score">SCORE <strong id="final-score">0</strong></p>
+        <p class="overlay-best hidden" id="new-best">✦ New best! ✦</p>
+        <button class="btn" id="restart">New game</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="bottom">
+    <p class="hint" id="hint">Fuse same-color groups — reach Fe (26) to go supernova</p>
+    <button class="reset-link" id="reset">Restart</button>
+  </footer>
+</main>
+
+<script src="game.js"></script>
+</body>
+</html>
