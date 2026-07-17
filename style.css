@@ -266,13 +266,28 @@ body {
     0 0 16px rgba(255, 150, 80, 0.7);
 }
 
-/* 融合すると次の段階(超新星/ブラックホール)に進むグループは全体がふわふわ光る */
+/* 融合すると次の段階(超新星/ブラックホール)に進むグループは
+   タイル本体が内側から明滅する(外側に光を漏らさず、どのタイルが対象か明確に) */
 .tile.will-nova .face {
   animation: will-glow 1.1s ease-in-out infinite alternate;
 }
 @keyframes will-glow {
-  from { filter: drop-shadow(0 0 2px rgba(255, 240, 180, 0.4)) brightness(1); }
-  to   { filter: drop-shadow(0 0 10px rgba(255, 240, 180, 0.95)) brightness(1.18); }
+  from { filter: brightness(1); }
+  to   { filter: brightness(1.32); }
+}
+.tile.will-nova .face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 72%);
+  pointer-events: none;
+  opacity: 0.08;
+  animation: will-sheen 1.1s ease-in-out infinite alternate;
+}
+@keyframes will-sheen {
+  from { opacity: 0.08; }
+  to   { opacity: 0.55; }
 }
 
 /* 超新星/ブラックホール昇格の瞬間のフラッシュ */
@@ -394,9 +409,17 @@ body {
 }
 .reset-link.round {
   width: 30px;
+  height: 30px;
   padding: 5px 0;
   text-align: center;
   border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.reset-link.round svg {
+  width: 15px;
+  height: 15px;
 }
 .hint {
   font-size: 12px;
@@ -688,4 +711,30 @@ body {
 .modal-card .btn {
   display: block;
   margin: 0 auto;
+}
+
+/* 確認モーダル(小さめ・中央寄せ) */
+.modal-small {
+  width: min(84vw, 320px);
+  text-align: center;
+  padding: 26px 22px 22px;
+}
+.confirm-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.confirm-text {
+  font-size: 13px;
+  font-weight: 400;
+  opacity: 0.85;
+  margin-bottom: 18px;
+}
+.confirm-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.confirm-buttons .btn {
+  width: 100%;
 }
