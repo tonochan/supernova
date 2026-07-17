@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#141a33">
+<title>SUPERNOVA</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💥</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="sky"></div>
+<div class="nebula"></div>
+
+<main class="app">
+  <header class="top">
+    <h1 class="logo">SUPER<span class="n r">N</span><span class="n y">O</span><span class="n g">V</span><span class="n b">A</span></h1>
+    <div class="scores">
+      <div class="chip">
+        <span class="chip-label" id="score-label">SCORE</span>
+        <span class="chip-value" id="score">0</span>
+      </div>
+      <div class="chip chip-best">
+        <span class="chip-label" id="best-label">BEST</span>
+        <span class="chip-value" id="best">0</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="board-wrap">
+    <div class="board" id="board"></div>
+
+    <div class="toast" id="toast"></div>
+
+    <div class="overlay hidden" id="overlay">
+      <div class="overlay-card">
+        <p class="overlay-title" id="over-title">No more fusions!</p>
+        <p class="overlay-score"><span id="final-score-label">SCORE</span> <strong id="final-score">0</strong></p>
+        <p class="overlay-best hidden" id="new-best">✦ New best! ✦</p>
+        <button class="btn" id="restart">New game</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ptable-wrap">
+    <div class="ptable" id="ptable"></div>
+    <p class="ptable-caption">
+      <span id="pt-count">1</span><span id="pt-label"> / 118 elements</span>
+      <span class="pt-hole hidden" id="pt-hole">· ● black hole</span>
+    </p>
+  </div>
+
+  <footer class="bottom">
+    <p class="hint" id="hint">Fuse same-color groups — reach Fe (26) to go supernova</p>
+    <div class="bottom-buttons">
+      <button class="reset-link round" id="help-btn" aria-label="How to play">?</button>
+      <button class="reset-link" id="lang-btn">日本語</button>
+      <button class="reset-link" id="reset">Restart</button>
+    </div>
+  </footer>
+</main>
+
+<div class="title-screen" id="title-screen">
+  <div class="title-halo"></div>
+  <div class="title-inner">
+    <h1 class="title-logo">SUPER<span class="n r">N</span><span class="n y">O</span><span class="n g">V</span><span class="n b">A</span></h1>
+    <p class="tagline" id="tagline">Fuse stardust into the elements</p>
+    <button class="btn" id="play-btn">Play</button>
+    <button class="btn btn-ghost" id="howto-btn">How to play</button>
+    <button class="btn btn-ghost btn-mini" id="lang-btn-title">日本語</button>
+  </div>
+</div>
+
+<div class="modal hidden" id="help-modal">
+  <div class="modal-card">
+    <h2 class="modal-title" id="help-title">How to play</h2>
+    <ol class="help-steps">
+      <li>
+        <div class="demo">
+          <span class="demo-tile g">H</span><span class="demo-plus">+</span><span class="demo-tile g">H</span>
+          <span class="demo-op">→</span><span class="demo-tile g">He</span>
+        </div>
+        <p id="hs1">Tap a group of <strong>2+ touching tiles of the same color</strong> to fuse them. Atomic numbers add up.</p>
+      </li>
+      <li>
+        <div class="demo">
+          <span class="demo-tile r">Li</span><span class="demo-plus">+</span><span class="demo-tile r">Be</span>
+          <span class="demo-op">→</span><span class="demo-tile r">N</span>
+        </div>
+        <p id="hs2">Numbers don't need to match — <strong>color is all that matters</strong>, and fused tiles keep it.</p>
+      </li>
+      <li>
+        <div class="demo">
+          <span class="demo-tile y">Ca</span><span class="demo-plus">+</span><span class="demo-tile y">C</span>
+          <span class="demo-op">→</span><span class="demo-tile nova">Fe</span>
+        </div>
+        <p id="hs3">Reach <strong>Fe (26)</strong> and the tile goes <strong>supernova</strong> ✦. Novas only fuse with other novas.</p>
+      </li>
+      <li>
+        <div class="demo">
+          <span class="demo-tile nova">Md</span><span class="demo-plus">+</span><span class="demo-tile nova">Ho</span>
+          <span class="demo-op">→</span><span class="demo-tile hole">●</span>
+        </div>
+        <p id="hs4">Push past <strong>Og (118)</strong> and novas collapse into a <strong>black hole</strong>. Holes devour each other, too.</p>
+      </li>
+      <li>
+        <p id="hs5">When nothing can fuse, the sky is full — game over. Can you light up all <strong>118 elements</strong> on the periodic table?</p>
+      </li>
+    </ol>
+    <button class="btn" id="help-close">Got it</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
