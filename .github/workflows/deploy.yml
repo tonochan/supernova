@@ -1,0 +1,30 @@
+name: Deploy to GitHub Pages
+
+# main → サイトのルート、beta → /beta/ サブパスに配信する。
+# 配信の実体は gh-pages ブランチ(Pagesの配信元に設定)。
+on:
+  push:
+    branches: [main, beta]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          # beta ブランチは /beta/ に、main はルートに置く
+          destination_dir: ${{ github.ref_name == 'beta' && 'beta' || '' }}
+          # ルート配信時に beta/ を消さない(逆も同様)
+          keep_files: true
+          exclude_assets: '.github,.gitignore'
