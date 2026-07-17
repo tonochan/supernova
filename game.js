@@ -42,6 +42,95 @@ const ELEMENT_NAMES = [
   "Roentgenium", "Copernicium", "Nihonium", "Flerovium", "Moscovium", "Livermorium", "Tennessine", "Oganesson",
 ];
 
+const ELEMENT_NAMES_JA = [
+  "水素", "ヘリウム", "リチウム", "ベリリウム", "ホウ素", "炭素", "窒素", "酸素", "フッ素", "ネオン",
+  "ナトリウム", "マグネシウム", "アルミニウム", "ケイ素", "リン", "硫黄", "塩素", "アルゴン", "カリウム", "カルシウム",
+  "スカンジウム", "チタン", "バナジウム", "クロム", "マンガン", "鉄", "コバルト", "ニッケル", "銅", "亜鉛",
+  "ガリウム", "ゲルマニウム", "ヒ素", "セレン", "臭素", "クリプトン", "ルビジウム", "ストロンチウム", "イットリウム", "ジルコニウム",
+  "ニオブ", "モリブデン", "テクネチウム", "ルテニウム", "ロジウム", "パラジウム", "銀", "カドミウム", "インジウム", "スズ",
+  "アンチモン", "テルル", "ヨウ素", "キセノン", "セシウム", "バリウム", "ランタン", "セリウム", "プラセオジム", "ネオジム",
+  "プロメチウム", "サマリウム", "ユウロピウム", "ガドリニウム", "テルビウム", "ジスプロシウム", "ホルミウム", "エルビウム", "ツリウム", "イッテルビウム",
+  "ルテチウム", "ハフニウム", "タンタル", "タングステン", "レニウム", "オスミウム", "イリジウム", "白金", "金", "水銀",
+  "タリウム", "鉛", "ビスマス", "ポロニウム", "アスタチン", "ラドン", "フランシウム", "ラジウム", "アクチニウム", "トリウム",
+  "プロトアクチニウム", "ウラン", "ネプツニウム", "プルトニウム", "アメリシウム", "キュリウム", "バークリウム", "カリホルニウム", "アインスタイニウム", "フェルミウム",
+  "メンデレビウム", "ノーベリウム", "ローレンシウム", "ラザホージウム", "ドブニウム", "シーボーギウム", "ボーリウム", "ハッシウム", "マイトネリウム", "ダームスタチウム",
+  "レントゲニウム", "コペルニシウム", "ニホニウム", "フレロビウム", "モスコビウム", "リバモリウム", "テネシン", "オガネソン",
+];
+
+// ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
+
+const LANG_KEY = "supernova-lang";
+let lang =
+  localStorage.getItem(LANG_KEY) ||
+  ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
+
+const STR = {
+  en: {
+    tagline: "Fuse stardust into the elements",
+    play: "Play",
+    howto: "How to play",
+    scoreL: "SCORE",
+    bestL: "BEST",
+    hint: "Fuse same-color groups — reach Fe (26) to go supernova",
+    restart: "Restart",
+    overTitle: "No more fusions!",
+    overScoreL: "SCORE",
+    newBest: "✦ New best! ✦",
+    newGameBtn: "New game",
+    helpTitle: "How to play",
+    hs1: "Tap a group of <strong>2+ touching tiles of the same color</strong> to fuse them. Atomic numbers add up.",
+    hs2: "Numbers don't need to match — <strong>color is all that matters</strong>, and fused tiles keep it.",
+    hs3: "Reach <strong>Fe (26)</strong> and the tile goes <strong>supernova</strong> ✦. Novas only fuse with other novas.",
+    hs4: "Push past <strong>Og (118)</strong> and novas collapse into a <strong>black hole</strong>. Holes devour each other, too.",
+    hs5: "When nothing can fuse, the sky is full — game over. Can you light up all <strong>118 elements</strong> on the periodic table?",
+    gotIt: "Got it",
+    backTitle: "Back to title?",
+    backText: "Your current game will be lost.",
+    backYes: "Back to title",
+    backNo: "Cancel",
+    ptLabel: " / 118 elements",
+    ptHole: "· ● black hole",
+    holeName: "black hole",
+    langBtn: "日本語",
+    toastNew: (z, s, n) => `✦ New element! ${z} ${s} — ${n}`,
+    toastHole: "✦ You made a BLACK HOLE! ✦",
+  },
+  ja: {
+    tagline: "星屑をあつめて元素をつくろう",
+    play: "あそぶ",
+    howto: "あそびかた",
+    scoreL: "スコア",
+    bestL: "ベスト",
+    hint: "同じ色をつなげて融合 — Fe(26)で超新星に",
+    restart: "はじめから",
+    overTitle: "もう融合できない!",
+    overScoreL: "スコア",
+    newBest: "✦ ベスト記録こうしん! ✦",
+    newGameBtn: "もういちど",
+    helpTitle: "あそびかた",
+    hs1: "<strong>同じ色のタイルが2枚以上</strong>つながっていたら、タップで融合。原子番号が足し算される。",
+    hs2: "数字はちがってもOK — <strong>大事なのは色</strong>。融合しても色は変わらない。",
+    hs3: "<strong>Fe(26)</strong>に届くと<strong>超新星</strong>✦に。ノヴァはノヴァ同士でしか融合できない。",
+    hs4: "<strong>Og(118)</strong>を超えると<strong>ブラックホール</strong>に崩壊。ブラックホール同士も融合できる。",
+    hs5: "どこも融合できなくなったらゲームオーバー。周期表の<strong>118元素</strong>をすべて光らせよう!",
+    gotIt: "わかった",
+    backTitle: "ホームにもどる?",
+    backText: "いまのゲームは終了します。",
+    backYes: "もどる",
+    backNo: "キャンセル",
+    ptLabel: " / 118 元素",
+    ptHole: "· ● ブラックホール",
+    holeName: "ブラックホール",
+    langBtn: "English",
+    toastNew: (z, s, n) => `✦ 新元素はっけん! ${z} ${s} — ${n}`,
+    toastHole: "✦ ブラックホール誕生! ✦",
+  },
+};
+
+function elementName(z) {
+  return (lang === "ja" ? ELEMENT_NAMES_JA : ELEMENT_NAMES)[z - 1];
+}
+
 // 各色の「軽い→重い」カラーランプ。育つほど深く濃い色になる
 const COLOR_RAMP = {
   red: [[248, 172, 156], [222, 74, 58]],
@@ -64,6 +153,7 @@ let best = Number(localStorage.getItem(STORAGE_KEY) || 0);
 let busy = false;
 let nextId = 1;
 let firstMergeDone = false;
+let maxTile = 1; // このゲームで作った最大の元素(降ってくる元素の幅に影響)
 
 // ---------- 表示ユーティリティ ----------
 
@@ -105,12 +195,13 @@ function sizeTile(tile) {
   // 盤面幅に対する相対サイズ。桁数で縮め、成長度で育てる
   const base = boardEl.clientWidth / SIZE;
   const text = tile.symEl.textContent;
-  let scale = text.length <= 2 ? 0.34 : text.length <= 3 ? 0.29 : 0.25;
+  let scale = text.length <= 2 ? 0.28 : text.length <= 3 ? 0.24 : 0.21;
   if (tile.value < HOLE_AT) scale *= 1 + 0.22 * growthT(tile);
   tile.el.style.setProperty("--fs", `${Math.round(base * scale)}px`);
   tile.el.style.setProperty("--fs-mass", `${Math.round(base * 0.13)}px`);
   const name = tile.nameEl.textContent;
-  tile.el.style.setProperty("--fs-name", `${Math.round(base * (name.length > 9 ? 0.085 : 0.105))}px`);
+  const longName = lang === "ja" ? name.length > 5 : name.length > 9;
+  tile.el.style.setProperty("--fs-name", `${Math.round(base * (longName ? 0.085 : 0.105))}px`);
 }
 
 function setTilePos(tile) {
@@ -124,23 +215,31 @@ function refreshTileFace(tile) {
     // 周期表の外側:質量だけのブラックホール
     tile.symEl.textContent = fmt(tile.value);
     tile.massEl.textContent = "";
-    tile.nameEl.textContent = "black hole";
+    tile.nameEl.textContent = STR[lang].holeName;
     face.background = "";
     face.color = "";
     face.textShadow = "";
   } else {
     tile.symEl.textContent = ELEMENTS[tile.value - 1];
     tile.massEl.textContent = String(tile.value);
-    tile.nameEl.textContent = ELEMENT_NAMES[tile.value - 1];
+    tile.nameEl.textContent = elementName(tile.value);
     if (tierOf(tile) === "nova") {
       face.background = "";
       face.color = "";
       face.textShadow = "";
+      // 次の段階(ブラックホール=118超え)までの進み具合
+      face.setProperty("--ring-p", Math.min(tile.value / 118, 1));
+      face.setProperty("--ring-c", "rgba(201, 147, 31, 0.9)");
+      face.setProperty("--ring-t", "rgba(28, 35, 64, 0.14)");
     } else {
       const t = growthT(tile);
       face.background = bgFor(tile);
       face.color = t > 0.55 ? "#fff" : "";
       face.textShadow = t > 0.55 ? "0 1px 6px rgba(0,0,0,0.35)" : "";
+      // 超新星(26)までの進み具合
+      face.setProperty("--ring-p", Math.min(tile.value / NOVA_AT, 1));
+      face.setProperty("--ring-c", t > 0.55 ? "rgba(255,255,255,0.9)" : "rgba(28, 35, 64, 0.5)");
+      face.setProperty("--ring-t", t > 0.55 ? "rgba(255,255,255,0.28)" : "rgba(0, 0, 0, 0.13)");
     }
   }
   sizeTile(tile);
@@ -155,17 +254,24 @@ function makeTile(value, color, r, c, spawnFromRow = null) {
   face.className = "face";
   const mass = document.createElement("span");
   mass.className = "mass";
+  const core = document.createElement("div");
+  core.className = "core";
+  const ring = document.createElement("span");
+  ring.className = "ring";
   const sym = document.createElement("span");
   sym.className = "sym";
   const name = document.createElement("span");
   name.className = "name";
+  core.appendChild(ring);
+  core.appendChild(sym);
   face.appendChild(mass);
-  face.appendChild(sym);
+  face.appendChild(core);
   face.appendChild(name);
   el.appendChild(face);
 
   const tile = { id: nextId++, value, color, r, c, el, symEl: sym, massEl: mass, nameEl: name, faceEl: face };
   refreshTileFace(tile);
+  noteDiscovery(value, true); // 盤面に出現した元素も周期表に灯る(トーストなし)
 
   if (spawnFromRow !== null) {
     // 盤面の上から降ってくる
@@ -187,7 +293,30 @@ function makeTile(value, color, r, c, spawnFromRow = null) {
 }
 
 function randomColor() {
-  return COLORS[Math.floor(Math.random() * COLORS.length)];
+  // 序盤は3色。初めて超新星を作ったら4色目(blue)が降りはじめる
+  const count = maxTile >= NOVA_AT ? 4 : 3;
+  return COLORS[Math.floor(Math.random() * count)];
+}
+
+// 降ってくる元素。基本は軽い元素ほど多く、ゲームが進むほど上限が上がる
+function spawnValue() {
+  let cap = 4; // H, He, Li, Be
+  if (maxTile >= NOVA_AT) cap = 6; // 超新星を作ったら C まで
+  if (maxTile >= 60) cap = 8; // さらに育ったら O まで
+  if (maxTile >= HOLE_AT) cap = 10; // ブラックホール後は Ne まで
+  const weights = [];
+  let total = 0;
+  for (let v = 1; v <= cap; v++) {
+    const w = 1 / v;
+    weights.push(w);
+    total += w;
+  }
+  let r = Math.random() * total;
+  for (let v = 1; v <= cap; v++) {
+    r -= weights[v - 1];
+    if (r <= 0) return v;
+  }
+  return 1;
 }
 
 // ---------- 盤面ロジック ----------
@@ -301,16 +430,67 @@ function toast(msg) {
   toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2400);
 }
 
-function noteDiscovery(value) {
+function noteDiscovery(value, silent = false) {
   const id = value >= HOLE_AT ? 0 : value;
   if (found.has(id)) return;
   found.add(id);
   localStorage.setItem(FOUND_KEY, JSON.stringify([...found]));
+  refreshPtable();
+  if (silent) return;
   if (id === 0) {
-    toast("✦ You made a BLACK HOLE! ✦");
+    toast(STR[lang].toastHole);
   } else {
-    toast(`✦ New element! ${value} ${ELEMENTS[value - 1]} — ${ELEMENT_NAMES[value - 1]}`);
+    toast(STR[lang].toastNew(value, ELEMENTS[value - 1], elementName(value)));
   }
+}
+
+// ---------- ミニ周期表 ----------
+
+// 標準的な18列レイアウトでの位置(ランタノイド/アクチノイドは下の段)
+function ptPos(z) {
+  if (z === 1) return [1, 1];
+  if (z === 2) return [1, 18];
+  if (z <= 4) return [2, z - 2];
+  if (z <= 10) return [2, z + 8];
+  if (z <= 12) return [3, z - 10];
+  if (z <= 18) return [3, z];
+  if (z <= 36) return [4, z - 18];
+  if (z <= 54) return [5, z - 36];
+  if (z <= 56) return [6, z - 54];
+  if (z <= 71) return [9, z - 57 + 3]; // ランタノイド(8行目はスペーサー)
+  if (z <= 86) return [6, z - 68];
+  if (z <= 88) return [7, z - 86];
+  if (z <= 103) return [10, z - 89 + 3]; // アクチノイド
+  return [7, z - 100];
+}
+
+const ptableEl = document.getElementById("ptable");
+const ptCountEl = document.getElementById("pt-count");
+const ptHoleEl = document.getElementById("pt-hole");
+const ptCells = new Map();
+
+function buildPtable() {
+  for (let z = 1; z <= 118; z++) {
+    const [row, col] = ptPos(z);
+    const cell = document.createElement("div");
+    cell.className = "pt-cell";
+    cell.style.gridRow = row;
+    cell.style.gridColumn = col;
+    cell.title = `${z} ${ELEMENTS[z - 1]} — ${elementName(z)}`;
+    ptableEl.appendChild(cell);
+    ptCells.set(z, cell);
+  }
+}
+
+function refreshPtable() {
+  let n = 0;
+  for (let z = 1; z <= 118; z++) {
+    const on = found.has(z);
+    if (on) n++;
+    ptCells.get(z).classList.toggle("on", on);
+  }
+  ptCountEl.textContent = n;
+  ptHoleEl.classList.toggle("hidden", !found.has(0));
 }
 
 // ---------- サウンド(短いポップ音) ----------
@@ -374,6 +554,7 @@ function onTap(tile) {
       if (t !== tile) t.el.remove();
     }
     tile.value = total;
+    maxTile = Math.max(maxTile, total);
     refreshTileFace(tile);
     tile.el.classList.remove("will-nova");
     tile.el.classList.add("pop");
@@ -425,7 +606,7 @@ function applyGravityAndRefill() {
     const emptyCount = SIZE - columnTiles.length;
     for (let i = 0; i < emptyCount; i++) {
       const r = emptyCount - 1 - i;
-      const tile = makeTile(1, randomColor(), r, c, r - emptyCount);
+      const tile = makeTile(spawnValue(), randomColor(), r, c, r - emptyCount);
       grid[r][c] = tile;
     }
   }
@@ -461,6 +642,7 @@ function gameOver() {
 function newGame() {
   busy = false;
   score = 0;
+  maxTile = 1;
   firstMergeDone = false;
   scoreEl.textContent = "0";
   bestEl.textContent = fmt(best);
@@ -473,7 +655,7 @@ function newGame() {
     boardEl.querySelectorAll(".tile").forEach((el) => el.remove());
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
-        grid[r][c] = makeTile(1, randomColor(), r, c);
+        grid[r][c] = makeTile(spawnValue(), randomColor(), r, c);
       }
     }
   } while (!hasMove());
@@ -481,9 +663,97 @@ function newGame() {
 }
 
 document.getElementById("restart").addEventListener("click", newGame);
-document.getElementById("reset").addEventListener("click", () => {
-  if (!busy) newGame();
+
+// ---------- タイトル画面とヘルプ ----------
+
+const titleScreen = document.getElementById("title-screen");
+const helpModal = document.getElementById("help-modal");
+
+document.getElementById("play-btn").addEventListener("click", () => {
+  titleScreen.classList.add("gone");
 });
+document.getElementById("howto-btn").addEventListener("click", () => {
+  helpModal.classList.remove("hidden");
+});
+document.getElementById("help-btn").addEventListener("click", () => {
+  helpModal.classList.remove("hidden");
+});
+document.getElementById("help-close").addEventListener("click", () => {
+  helpModal.classList.add("hidden");
+});
+// カードの外側をタップしても閉じる
+helpModal.addEventListener("click", (e) => {
+  if (e.target === helpModal) helpModal.classList.add("hidden");
+});
+
+// 戻るボタン → 確認モーダル → ホーム(タイトル)へ。ゲームはリセットされる
+const backModal = document.getElementById("back-modal");
+
+document.getElementById("back-btn").addEventListener("click", () => {
+  if (!busy) backModal.classList.remove("hidden");
+});
+document.getElementById("back-no").addEventListener("click", () => {
+  backModal.classList.add("hidden");
+});
+backModal.addEventListener("click", (e) => {
+  if (e.target === backModal) backModal.classList.add("hidden");
+});
+document.getElementById("back-yes").addEventListener("click", () => {
+  backModal.classList.add("hidden");
+  newGame();
+  titleScreen.classList.remove("gone");
+});
+
+// ---------- 言語の適用と切替 ----------
+
+function applyLang() {
+  const s = STR[lang];
+  document.documentElement.lang = lang;
+  const setText = (id, text) => (document.getElementById(id).textContent = text);
+  setText("tagline", s.tagline);
+  setText("play-btn", s.play);
+  setText("howto-btn", s.howto);
+  setText("score-label", s.scoreL);
+  setText("best-label", s.bestL);
+  setText("hint", s.hint);
+  setText("over-title", s.overTitle);
+  setText("final-score-label", s.overScoreL);
+  setText("new-best", s.newBest);
+  setText("restart", s.newGameBtn);
+  setText("help-title", s.helpTitle);
+  setText("help-close", s.gotIt);
+  setText("back-title", s.backTitle);
+  setText("back-text", s.backText);
+  setText("back-yes", s.backYes);
+  setText("back-no", s.backNo);
+  setText("pt-label", s.ptLabel);
+  setText("pt-hole", s.ptHole);
+  setText("lang-btn", s.langBtn);
+  setText("lang-btn-title", s.langBtn);
+  for (const id of ["hs1", "hs2", "hs3", "hs4", "hs5"]) {
+    document.getElementById(id).innerHTML = s[id];
+  }
+  // タイル上の元素名と周期表のツールチップも切り替える
+  if (grid) {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (grid[r][c]) refreshTileFace(grid[r][c]);
+      }
+    }
+  }
+  for (const [z, cell] of ptCells) {
+    cell.title = `${z} ${ELEMENTS[z - 1]} — ${elementName(z)}`;
+  }
+}
+
+function toggleLang() {
+  lang = lang === "ja" ? "en" : "ja";
+  localStorage.setItem(LANG_KEY, lang);
+  applyLang();
+}
+
+document.getElementById("lang-btn").addEventListener("click", toggleLang);
+document.getElementById("lang-btn-title").addEventListener("click", toggleLang);
 
 // 画面リサイズで文字サイズを取り直す
 window.addEventListener("resize", () => {
@@ -495,4 +765,7 @@ window.addEventListener("resize", () => {
   }
 });
 
+buildPtable();
+refreshPtable();
+applyLang();
 newGame();
