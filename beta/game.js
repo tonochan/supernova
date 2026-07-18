@@ -181,14 +181,26 @@ function growthT(tile) {
   return Math.min((tile.value - 1) / (NOVA_AT - 1), 1);
 }
 
+// 成長度を反映したベース色(ブリッジやパッチの塗りにも使う)
+function rampColor(tile) {
+  const t = growthT(tile);
+  const [lo, hi] = COLOR_RAMP[tile.color];
+  return `rgb(${lo.map((v, i) => Math.round(v + (hi[i] - v) * t)).join(",")})`;
+}
+
+// タイル同士をつなぐブリッジ/パッチの塗り色
+function solidColorFor(tile) {
+  if (tile.value >= HOLE_AT) return "#160d2b";
+  if (tierOf(tile) === "nova") return "#fff3d6";
+  return rampColor(tile);
+}
+
 // 育つほど色が深まり、中心に「熱い核」の光が生まれる
 function bgFor(tile) {
   const t = growthT(tile);
-  const [lo, hi] = COLOR_RAMP[tile.color];
-  const mix = lo.map((v, i) => Math.round(v + (hi[i] - v) * t));
   const coreA = (0.12 + 0.68 * t).toFixed(2);
   const coreR = Math.round(16 + 36 * t);
-  return `radial-gradient(circle at 50% 36%, rgba(255,255,255,${coreA}) 0%, rgba(255,255,255,0) ${coreR}%), rgb(${mix.join(",")})`;
+  return `radial-gradient(circle at 50% 36%, rgba(255,255,255,${coreA}) 0%, rgba(255,255,255,0) ${coreR}%), ${rampColor(tile)}`;
 }
 
 function sizeTile(tile) {
@@ -242,6 +254,10 @@ function refreshTileFace(tile) {
       face.setProperty("--ring-t", t > 0.55 ? "rgba(255,255,255,0.28)" : "rgba(0, 0, 0, 0.13)");
     }
   }
+  // ブリッジとパッチはタイルのベース色で塗る
+  const solid = solidColorFor(tile);
+  for (const key of ["u", "d", "l", "r"]) tile.bridges[key].style.background = solid;
+  tile.patchEl.style.background = solid;
   sizeTile(tile);
 }
 
@@ -250,6 +266,18 @@ function refreshTileFace(tile) {
 function makeTile(value, color, r, c, spawnFromRow = null) {
   const el = document.createElement("div");
   el.className = "tile";
+  // 接続部の隙間を埋めるブリッジ(上下左右)と、2x2の内部の穴を埋めるパッチ。
+  // faceより先に追加して、faceの下に描画されるようにする
+  const bridges = {};
+  for (const [key, cls] of [["u", "bu"], ["d", "bd"], ["l", "bl"], ["r", "br"]]) {
+    const b = document.createElement("div");
+    b.className = "bridge " + cls;
+    el.appendChild(b);
+    bridges[key] = b;
+  }
+  const patch = document.createElement("div");
+  patch.className = "patch";
+  el.appendChild(patch);
   const face = document.createElement("div");
   face.className = "face";
   const mass = document.createElement("span");
@@ -269,7 +297,7 @@ function makeTile(value, color, r, c, spawnFromRow = null) {
   face.appendChild(name);
   el.appendChild(face);
 
-  const tile = { id: nextId++, value, color, r, c, el, symEl: sym, massEl: mass, nameEl: name, faceEl: face };
+  const tile = { id: nextId++, value, color, r, c, el, symEl: sym, massEl: mass, nameEl: name, faceEl: face, bridges, patchEl: patch };
   refreshTileFace(tile);
   noteDiscovery(value, true); // 盤面に出現した元素も周期表に灯る(トーストなし)
 
@@ -353,8 +381,6 @@ function findGroup(tile) {
 // あわせて「融合したら次の段階に進むグループ」を全体グローで予告する。
 function updateConnections() {
   const R = "13px";
-  const GAP = "3.5px";
-  const JOIN = "-0.5px"; // わずかに重ねて継ぎ目を消す
 
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
@@ -367,31 +393,38 @@ function updateConnections() {
       const down = same(r + 1, c);
       const left = same(r, c - 1);
       const right = same(r, c + 1);
+      const dUL = same(r - 1, c - 1);
+      const dUR = same(r - 1, c + 1);
+      const dDL = same(r + 1, c - 1);
+      const dDR = same(r + 1, c + 1);
 
+      // faceは常に同サイズ。接続部はブリッジ(隙間を埋める帯)でつなぐ。
+      // 接続辺に面した角だけ角丸を消して、ブリッジと面一にする
       const f = t.faceEl.style;
-      f.top = up ? JOIN : GAP;
-      f.bottom = down ? JOIN : GAP;
-      f.left = left ? JOIN : GAP;
-      f.right = right ? JOIN : GAP;
-      // 角丸の出し分け:
-      //  - 両隣とも非接続 → 通常の角丸(ブロブの外周)
-      //  - 両隣接続かつ対角も同グループ → 0(完全な内部)
-      //  - 両隣接続だが対角が別 → 小さなR(T字/L字/十字の接合部の飛び出し角をなめらかに)
-      //  - 片側だけ接続 → 0(直線の継ぎ目をまっすぐ通す)
-      const RJ = "5px";
-      const rad = (a, b, diag) => (!a && !b ? R : a && b && !diag ? RJ : "0px");
-      f.borderTopLeftRadius = rad(up, left, same(r - 1, c - 1));
-      f.borderTopRightRadius = rad(up, right, same(r - 1, c + 1));
-      f.borderBottomLeftRadius = rad(down, left, same(r + 1, c - 1));
-      f.borderBottomRightRadius = rad(down, right, same(r + 1, c + 1));
+      f.borderTopLeftRadius = up || left ? "0px" : R;
+      f.borderTopRightRadius = up || right ? "0px" : R;
+      f.borderBottomLeftRadius = down || left ? "0px" : R;
+      f.borderBottomRightRadius = down || right ? "0px" : R;
+
+      t.bridges.u.classList.toggle("on", up);
+      t.bridges.d.classList.toggle("on", down);
+      t.bridges.l.classList.toggle("on", left);
+      t.bridges.r.classList.toggle("on", right);
+      // 2x2以上の内部にできる穴は、その左上のタイルがパッチで埋める
+      t.patchEl.classList.toggle("on", right && down && dDR);
+
       // 下と接続しているタイルは底のベベル(立体の縁)を消す
       t.el.classList.toggle("conn-d", down);
       t.el.classList.remove("will-nova");
-      t.conn = { up, down, left, right };
+      t.conn = { up, down, left, right, dUL, dUR, dDL, dDR };
     }
   }
 
-  // グロー対象グループ:明滅の位相を全員そろえるため、共通の負のdelayを配る
+  // クラスを全部外した状態で一度スタイルを確定させてから付け直すことで、
+  // グロー中の既存メンバーも含めて全員のアニメーションを同一フレームで再スタートさせる。
+  // delayは絶対時計(performance.now)基準なので、再スタートしても見た目の位相は飛ばない
+  void boardEl.offsetWidth;
+
   const syncDelay = `-${((performance.now() / 1000) % 1.1).toFixed(3)}s`;
   const EDGE = "2px solid rgba(255, 246, 214, 0.95)";
   const NO_EDGE = "0 solid transparent";
@@ -412,11 +445,21 @@ function updateConnections() {
         for (const g of group) {
           g.el.classList.add("will-nova");
           g.el.style.setProperty("--wd", syncDelay);
+          const cn = g.conn;
           // グループの外周にだけ実線の光を引く(接続している辺には引かない)
-          g.el.style.setProperty("--eg-t", g.conn.up ? NO_EDGE : EDGE);
-          g.el.style.setProperty("--eg-b", g.conn.down ? NO_EDGE : EDGE);
-          g.el.style.setProperty("--eg-l", g.conn.left ? NO_EDGE : EDGE);
-          g.el.style.setProperty("--eg-r", g.conn.right ? NO_EDGE : EDGE);
+          g.el.style.setProperty("--eg-t", cn.up ? NO_EDGE : EDGE);
+          g.el.style.setProperty("--eg-b", cn.down ? NO_EDGE : EDGE);
+          g.el.style.setProperty("--eg-l", cn.left ? NO_EDGE : EDGE);
+          g.el.style.setProperty("--eg-r", cn.right ? NO_EDGE : EDGE);
+          // ブリッジの縁のうち、外周に面している側にも光を通す(実線を途切れさせない)
+          g.bridges.r.style.setProperty("--e1", cn.up && cn.dUR ? NO_EDGE : EDGE);
+          g.bridges.r.style.setProperty("--e2", cn.down && cn.dDR ? NO_EDGE : EDGE);
+          g.bridges.l.style.setProperty("--e1", cn.up && cn.dUL ? NO_EDGE : EDGE);
+          g.bridges.l.style.setProperty("--e2", cn.down && cn.dDL ? NO_EDGE : EDGE);
+          g.bridges.u.style.setProperty("--e1", cn.left && cn.dUL ? NO_EDGE : EDGE);
+          g.bridges.u.style.setProperty("--e2", cn.right && cn.dUR ? NO_EDGE : EDGE);
+          g.bridges.d.style.setProperty("--e1", cn.left && cn.dDL ? NO_EDGE : EDGE);
+          g.bridges.d.style.setProperty("--e2", cn.right && cn.dDR ? NO_EDGE : EDGE);
         }
       }
     }
