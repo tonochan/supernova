@@ -373,15 +373,28 @@ function updateConnections() {
       f.bottom = down ? JOIN : GAP;
       f.left = left ? JOIN : GAP;
       f.right = right ? JOIN : GAP;
-      f.borderTopLeftRadius = up || left ? "0px" : R;
-      f.borderTopRightRadius = up || right ? "0px" : R;
-      f.borderBottomLeftRadius = down || left ? "0px" : R;
-      f.borderBottomRightRadius = down || right ? "0px" : R;
+      // 角丸の出し分け:
+      //  - 両隣とも非接続 → 通常の角丸(ブロブの外周)
+      //  - 両隣接続かつ対角も同グループ → 0(完全な内部)
+      //  - 両隣接続だが対角が別 → 小さなR(T字/L字/十字の接合部の飛び出し角をなめらかに)
+      //  - 片側だけ接続 → 0(直線の継ぎ目をまっすぐ通す)
+      const RJ = "5px";
+      const rad = (a, b, diag) => (!a && !b ? R : a && b && !diag ? RJ : "0px");
+      f.borderTopLeftRadius = rad(up, left, same(r - 1, c - 1));
+      f.borderTopRightRadius = rad(up, right, same(r - 1, c + 1));
+      f.borderBottomLeftRadius = rad(down, left, same(r + 1, c - 1));
+      f.borderBottomRightRadius = rad(down, right, same(r + 1, c + 1));
       // 下と接続しているタイルは底のベベル(立体の縁)を消す
       t.el.classList.toggle("conn-d", down);
       t.el.classList.remove("will-nova");
+      t.conn = { up, down, left, right };
     }
   }
+
+  // グロー対象グループ:明滅の位相を全員そろえるため、共通の負のdelayを配る
+  const syncDelay = `-${((performance.now() / 1000) % 1.1).toFixed(3)}s`;
+  const EDGE = "2px solid rgba(255, 246, 214, 0.95)";
+  const NO_EDGE = "0 solid transparent";
 
   const seen = new Set();
   for (let r = 0; r < SIZE; r++) {
@@ -396,7 +409,15 @@ function updateConnections() {
       const willAscend =
         (k !== "nova" && k !== "hole" && sum >= NOVA_AT) || (k === "nova" && sum >= HOLE_AT);
       if (willAscend) {
-        for (const g of group) g.el.classList.add("will-nova");
+        for (const g of group) {
+          g.el.classList.add("will-nova");
+          g.el.style.setProperty("--wd", syncDelay);
+          // グループの外周にだけ実線の光を引く(接続している辺には引かない)
+          g.el.style.setProperty("--eg-t", g.conn.up ? NO_EDGE : EDGE);
+          g.el.style.setProperty("--eg-b", g.conn.down ? NO_EDGE : EDGE);
+          g.el.style.setProperty("--eg-l", g.conn.left ? NO_EDGE : EDGE);
+          g.el.style.setProperty("--eg-r", g.conn.right ? NO_EDGE : EDGE);
+        }
       }
     }
   }
