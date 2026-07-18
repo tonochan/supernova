@@ -171,13 +171,28 @@ body {
 .tile.merging { z-index: 2; }
 .tile.target  { z-index: 3; }
 
+/* 接続部の隙間を埋めるブリッジと、2x2内部の穴を埋めるパッチ(faceの下に描画)。
+   角丸と同一フレームで切り替え、接続前の平らな角を露出させない */
+.tile .bridge,
+.tile .patch {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.tile .bridge.on,
+.tile .patch.on {
+  opacity: 1;
+}
+.tile .bridge.br { left: calc(100% - 4.5px); right: -0.5px; top: 3.5px; bottom: 3.5px; }
+.tile .bridge.bl { right: calc(100% - 4.5px); left: -0.5px; top: 3.5px; bottom: 3.5px; }
+.tile .bridge.bd { top: calc(100% - 4.5px); bottom: -0.5px; left: 3.5px; right: 3.5px; }
+.tile .bridge.bu { bottom: calc(100% - 4.5px); top: -0.5px; left: 3.5px; right: 3.5px; }
+.tile .patch { left: calc(100% - 4.5px); top: calc(100% - 4.5px); width: 9px; height: 9px; }
+
 .tile .face {
   position: absolute;
   inset: 3.5px;
   border-radius: 13px;
-  transition:
-    border-radius 0.15s ease,
-    top 0.15s ease, right 0.15s ease, bottom 0.15s ease, left 0.15s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -190,6 +205,7 @@ body {
     0 2px 6px rgba(5, 8, 22, 0.35);
   cursor: pointer;
 }
+.tile.shape-reset .face { transition: none; }
 
 /* 記号を囲む進捗リング(次の段階までの割合ぶん、12時から時計回りに塗られる) */
 .tile .core {
@@ -270,10 +286,54 @@ body {
    タイル本体が内側から明滅する(外側に光を漏らさず、どのタイルが対象か明確に) */
 .tile.will-nova .face {
   animation: will-glow 1.1s ease-in-out infinite alternate;
+  animation-delay: var(--wd, 0s);
 }
 @keyframes will-glow {
   from { filter: brightness(1); }
   to   { filter: brightness(1.32); }
+}
+/* グループ外周の実線グロー(接続していない辺のみ、明滅は本体と同位相) */
+.tile.will-nova .face::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border-top: var(--eg-t, 0 solid transparent);
+  border-right: var(--eg-r, 0 solid transparent);
+  border-bottom: var(--eg-b, 0 solid transparent);
+  border-left: var(--eg-l, 0 solid transparent);
+  pointer-events: none;
+  animation: edge-glow 1.1s ease-in-out infinite alternate;
+  animation-delay: var(--wd, 0s);
+}
+@keyframes edge-glow {
+  from { opacity: 0.4; }
+  to   { opacity: 1; }
+}
+/* ブリッジとパッチも本体と同位相で明滅させる */
+.tile.will-nova .bridge.on,
+.tile.will-nova .patch.on {
+  animation: will-glow 1.1s ease-in-out infinite alternate;
+  animation-delay: var(--wd, 0s);
+}
+/* ブリッジ上を通る外周の実線(横ブリッジは上下辺、縦ブリッジは左右辺) */
+.tile.will-nova .bridge.on::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: edge-glow 1.1s ease-in-out infinite alternate;
+  animation-delay: var(--wd, 0s);
+}
+.tile.will-nova .bridge.br.on::after,
+.tile.will-nova .bridge.bl.on::after {
+  border-top: var(--e1, 0 solid transparent);
+  border-bottom: var(--e2, 0 solid transparent);
+}
+.tile.will-nova .bridge.bu.on::after,
+.tile.will-nova .bridge.bd.on::after {
+  border-left: var(--e1, 0 solid transparent);
+  border-right: var(--e2, 0 solid transparent);
 }
 .tile.will-nova .face::after {
   content: "";
@@ -284,6 +344,7 @@ body {
   pointer-events: none;
   opacity: 0.08;
   animation: will-sheen 1.1s ease-in-out infinite alternate;
+  animation-delay: var(--wd, 0s);
 }
 @keyframes will-sheen {
   from { opacity: 0.08; }
@@ -444,6 +505,7 @@ body {
 .reset-link:active { opacity: 1; background: rgba(255,255,255,0.1); }
 
 /* ---- ゲームオーバー ---- */
+/* ゲームオーバー時も最後の盤面が見えるように、ぼかさず薄い暗幕のみ(スクショ共有のため) */
 .overlay {
   position: absolute;
   inset: 0;
@@ -452,8 +514,7 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 20px;
-  background: rgba(10, 13, 30, 0.72);
-  backdrop-filter: blur(5px);
+  background: rgba(8, 11, 26, 0.35);
   animation: fade-in 0.4s ease;
 }
 .overlay.hidden { display: none; }
@@ -464,7 +525,11 @@ body {
 
 .overlay-card {
   text-align: center;
-  padding: 28px 30px;
+  padding: 22px 30px 24px;
+  border-radius: 18px;
+  background: rgba(19, 25, 52, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 14px 40px rgba(5, 8, 22, 0.6);
   animation: card-up 0.45s cubic-bezier(0.3, 1.4, 0.5, 1) backwards;
   animation-delay: 0.15s;
 }
