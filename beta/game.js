@@ -60,6 +60,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
+const BUILD_VERSION = "2026-07-18 21:03 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -92,6 +93,8 @@ const STR = {
     ptHole: "· ● black hole",
     holeName: "black hole",
     langBtn: "日本語",
+    version: (build) => `Version ${build}`,
+    update: "Update to latest version",
     toastNew: (z, s, n) => `✦ New element! ${z} ${s} — ${n}`,
     toastHole: "✦ You made a BLACK HOLE! ✦",
   },
@@ -122,6 +125,8 @@ const STR = {
     ptHole: "· ● ブラックホール",
     holeName: "ブラックホール",
     langBtn: "English",
+    version: (build) => `バージョン ${build}`,
+    update: "最新のバージョンに更新",
     toastNew: (z, s, n) => `✦ 新元素はっけん! ${z} ${s} — ${n}`,
     toastHole: "✦ ブラックホール誕生! ✦",
   },
@@ -760,6 +765,11 @@ document.getElementById("play-btn").addEventListener("click", () => {
 document.getElementById("howto-btn").addEventListener("click", () => {
   helpModal.classList.remove("hidden");
 });
+document.getElementById("update-btn").addEventListener("click", () => {
+  const url = new URL(window.location.href);
+  url.searchParams.set("update", Date.now().toString());
+  window.location.replace(url.toString());
+});
 document.getElementById("help-btn").addEventListener("click", () => {
   helpModal.classList.remove("hidden");
 });
@@ -815,6 +825,8 @@ function applyLang() {
   setText("pt-hole", s.ptHole);
   setText("lang-btn", s.langBtn);
   setText("lang-btn-title", s.langBtn);
+  setText("version", s.version(BUILD_VERSION));
+  setText("update-btn", s.update);
   for (const id of ["hs1", "hs2", "hs3", "hs4", "hs5"]) {
     document.getElementById(id).innerHTML = s[id];
   }
