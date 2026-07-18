@@ -109,6 +109,7 @@ const STR = {
     replayPosition: "Replay position",
     replayStep: (step, total) => `${step} / ${total}`,
     replayHint: "Replay mode",
+    replayGuide: "Paused: tap the board to step forward",
     toastNew: (z, s, n) => `✦ New element! ${z} ${s} — ${n}`,
     toastHole: "✦ You made a BLACK HOLE! ✦",
   },
@@ -151,6 +152,7 @@ const STR = {
     replayPosition: "リプレイ位置",
     replayStep: (step, total) => `${step} / ${total}`,
     replayHint: "リプレイ中",
+    replayGuide: "停止中は盤面タップで1手すすむ",
     toastNew: (z, s, n) => `✦ 新元素はっけん! ${z} ${s} — ${n}`,
     toastHole: "✦ ブラックホール誕生! ✦",
   },
@@ -198,6 +200,8 @@ let activeReplay = null;
 let replayFrames = [];
 let replayIndex = 0;
 let replayTimer = null;
+let replayAnimationTimers = [];
+let replayAnimating = false;
 let replayPlaying = false;
 let replayReturnTarget = "gameover";
 let isReplayMode = false;
@@ -786,7 +790,23 @@ function updateReplayControlsText() {
   if (isReplayMode) hintEl.textContent = s.replayHint;
 }
 
+function clearReplayAnimation() {
+  for (const id of replayAnimationTimers) clearTimeout(id);
+  replayAnimationTimers = [];
+  replayAnimating = false;
+}
+
+function replayTimeout(fn, delay) {
+  const id = setTimeout(() => {
+    replayAnimationTimers = replayAnimationTimers.filter((timerId) => timerId !== id);
+    fn();
+  }, delay);
+  replayAnimationTimers.push(id);
+  return id;
+}
+
 function renderReplayFrame(index) {
+  clearReplayAnimation();
   if (!replayFrames.length) return;
   replayIndex = Math.max(0, Math.min(Number(index) || 0, replayFrames.length - 1));
   const frame = replayFrames[replayIndex];
@@ -810,10 +830,88 @@ function renderReplayFrame(index) {
   updateReplayControlsText();
 }
 
-function pauseReplay() {
+function finishReplayAnimation(nextIndex) {
+  replayAnimating = false;
+  replayAnimationTimers = [];
+  renderReplayFrame(nextIndex);
+  if (!replayPlaying) return;
+  if (nextIndex >= replayFrames.length - 1) {
+    pauseReplay();
+  } else {
+    scheduleReplayTick();
+  }
+}
+
+function animateReplayStep(nextIndex) {
+  if (!replayFrames.length || replayAnimating) return;
+  if (nextIndex !== replayIndex + 1 || nextIndex >= replayFrames.length) {
+    renderReplayFrame(nextIndex);
+    return;
+  }
+
+  const frame = replayFrames[nextIndex];
+  const tap = frame.tap;
+  const tile = tap ? grid[tap.r]?.[tap.c] : null;
+  const group = tile ? findGroup(tile) : [];
+  if (!tile || group.length < 2) {
+    renderReplayFrame(nextIndex);
+    return;
+  }
+
+  replayAnimating = true;
+  clearTimeout(replayTimer);
+  replayTimer = null;
+  const oldTier = tierOf(tile);
+  const total = frame.gain ?? group.reduce((sum, t) => sum + t.value, 0);
+
+  for (const t of group) resetTileShape(t);
+  for (const t of group) {
+    if (t === tile) {
+      t.el.classList.add("target");
+      continue;
+    }
+    grid[t.r][t.c] = null;
+    t.el.classList.add("merging");
+    t.r = tile.r;
+    t.c = tile.c;
+    setTilePos(t);
+  }
+
+  replayTimeout(() => {
+    if (!isReplayMode) return;
+    for (const t of group) {
+      if (t !== tile) t.el.remove();
+    }
+    tile.value = total;
+    maxTile = Math.max(maxTile, total);
+    refreshTileFace(tile);
+    tile.el.classList.remove("will-nova");
+    tile.el.classList.add("pop", "replay-tap");
+    if (tierOf(tile) !== oldTier) tile.el.classList.add("promoted");
+  }, 170);
+
+  replayTimeout(() => {
+    if (!isReplayMode) return;
+    finishReplayAnimation(nextIndex);
+  }, 470);
+}
+
+function advanceReplayStep() {
+  const next = replayIndex + 1;
+  animateReplayStep(next);
+}
+
+function stepReplayFromBoard() {
+  if (!isReplayMode || replayPlaying || replayAnimating) return;
+  if (replayIndex >= replayFrames.length - 1) return;
+  advanceReplayStep();
+}
+
+function pauseReplay(cancelAnimation = false) {
   replayPlaying = false;
   clearTimeout(replayTimer);
   replayTimer = null;
+  if (cancelAnimation) clearReplayAnimation();
   updateReplayControlsText();
 }
 
@@ -823,15 +921,9 @@ function replayDelay() {
 
 function scheduleReplayTick() {
   clearTimeout(replayTimer);
-  if (!replayPlaying) return;
+  if (!replayPlaying || replayAnimating) return;
   replayTimer = setTimeout(() => {
-    const next = replayIndex + 1;
-    renderReplayFrame(next);
-    if (next >= replayFrames.length - 1) {
-      pauseReplay();
-    } else {
-      scheduleReplayTick();
-    }
+    advanceReplayStep();
   }, replayDelay());
 }
 
@@ -844,12 +936,12 @@ function playReplay() {
 }
 
 function stopReplay() {
-  pauseReplay();
+  pauseReplay(true);
   renderReplayFrame(0);
 }
 
 function resetReplayMode() {
-  pauseReplay();
+  pauseReplay(true);
   isReplayMode = false;
   activeReplay = null;
   replayFrames = [];
@@ -887,13 +979,14 @@ function startReplay(replay, returnTarget = "gameover") {
   replaySliderEl.value = "0";
   renderReplayFrame(0);
   playReplay();
+  toast(STR[lang].replayGuide);
 }
 
 function exitReplay() {
   const frames = replayFrames;
   const replay = activeReplay;
   const returnTarget = replayReturnTarget;
-  pauseReplay();
+  pauseReplay(true);
   if (returnTarget === "gameover" && frames.length) renderReplayFrame(frames.length - 1);
   resetReplayMode();
   hintEl.textContent = STR[lang].hint;
@@ -1172,6 +1265,9 @@ function newGame() {
 }
 
 document.getElementById("restart").addEventListener("click", newGame);
+boardEl.addEventListener("pointerdown", () => {
+  stepReplayFromBoard();
+});
 replayBtnEl.addEventListener("click", () => {
   const replay = getLastReplay();
   if (replay) startReplay(replay, "gameover");
