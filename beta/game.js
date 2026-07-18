@@ -60,7 +60,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-07-18 21:07 JST";
+const BUILD_VERSION = "2026-07-18 21:20 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -255,8 +255,8 @@ function refreshTileFace(tile) {
       face.textShadow = t > 0.55 ? "0 1px 6px rgba(0,0,0,0.35)" : "";
       // 超新星(26)までの進み具合
       face.setProperty("--ring-p", Math.min(tile.value / NOVA_AT, 1));
-      face.setProperty("--ring-c", t > 0.55 ? "rgba(255,255,255,0.9)" : "rgba(28, 35, 64, 0.5)");
-      face.setProperty("--ring-t", t > 0.55 ? "rgba(255,255,255,0.28)" : "rgba(0, 0, 0, 0.13)");
+      face.setProperty("--ring-c", "rgba(255,255,255,0.9)");
+      face.setProperty("--ring-t", "rgba(255,255,255,0.28)");
     }
   }
   // ブリッジとパッチはタイルのベース色で塗る
