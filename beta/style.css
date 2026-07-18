@@ -172,13 +172,12 @@ body {
 .tile.target  { z-index: 3; }
 
 /* 接続部の隙間を埋めるブリッジと、2x2内部の穴を埋めるパッチ(faceの下に描画)。
-   落下中に少し遅れて現れ始め、着地とほぼ同時に接続が完成する */
+   角丸と同一フレームで切り替え、接続前の平らな角を露出させない */
 .tile .bridge,
 .tile .patch {
   position: absolute;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.1s ease 0.05s;
 }
 .tile .bridge.on,
 .tile .patch.on {
@@ -194,7 +193,6 @@ body {
   position: absolute;
   inset: 3.5px;
   border-radius: 13px;
-  transition: border-radius 0.15s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
