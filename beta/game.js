@@ -349,7 +349,7 @@ function findGroup(tile) {
   return group;
 }
 
-// となり合う同キャラ(色/nova/hole)のタイルを見た目上くっつける。
+// となり合う同キャラ(色/nova/hole)のタイルを1つのブロブとして見た目上くっつける。
 // あわせて「融合したら次の段階に進むグループ」を全体グローで予告する。
 function updateConnections() {
   const R = "13px";
