@@ -64,7 +64,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-07-19 01:11 JST";
+const BUILD_VERSION = "2026-07-19 01:16 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -676,6 +676,15 @@ function cleanReplayBoard(board) {
   });
 }
 
+function cleanReplaySpawn(spawn) {
+  const r = Number(spawn?.r);
+  const c = Number(spawn?.c);
+  if (!Number.isInteger(r) || !Number.isInteger(c) || r < 0 || r >= SIZE || c < 0 || c >= SIZE) {
+    throw new Error("Invalid replay spawn");
+  }
+  return { r, c, ...cleanReplayCell(spawn) };
+}
+
 function keyOfReplayCell(cell) {
   if (cell.value >= HOLE_AT) return "hole";
   if (cell.value >= NOVA_AT) return "nova";
@@ -721,10 +730,8 @@ function simulateReplayMove(board, move) {
 
   const spawns = new Map();
   for (const spawn of move.spawns || []) {
-    const sr = Number(spawn.r);
-    const sc = Number(spawn.c);
-    if (!Number.isInteger(sr) || !Number.isInteger(sc)) throw new Error("Invalid replay spawn");
-    spawns.set(`${sr},${sc}`, cleanReplayCell(spawn));
+    const s = cleanReplaySpawn(spawn);
+    spawns.set(`${s.r},${s.c}`, { value: s.value, color: s.color });
   }
 
   for (let col = 0; col < SIZE; col++) {
@@ -769,6 +776,7 @@ function buildReplayFrames(replay) {
       score: replayScore,
       maxTile: replayMaxTile,
       tap: move.tap,
+      spawns: (move.spawns || []).map(cleanReplaySpawn),
       gain,
       hash,
       mismatch: Boolean(move.afterHash && move.afterHash !== hash),
@@ -828,6 +836,37 @@ function renderReplayFrame(index) {
   updateConnections();
   replaySliderEl.value = String(replayIndex);
   updateReplayControlsText();
+}
+
+function applyReplayGravityAndRefill(spawns) {
+  const spawnMap = new Map(spawns.map((spawn) => [`${spawn.r},${spawn.c}`, spawn]));
+  for (let c = 0; c < SIZE; c++) {
+    const columnTiles = [];
+    for (let r = SIZE - 1; r >= 0; r--) {
+      if (grid[r][c]) columnTiles.push(grid[r][c]);
+    }
+    for (let i = 0; i < SIZE; i++) {
+      const r = SIZE - 1 - i;
+      if (i < columnTiles.length) {
+        const t = columnTiles[i];
+        grid[r][c] = t;
+        if (t.r !== r) {
+          t.r = r;
+          setTilePos(t);
+        }
+      } else {
+        grid[r][c] = null;
+      }
+    }
+    const emptyCount = SIZE - columnTiles.length;
+    for (let i = 0; i < emptyCount; i++) {
+      const r = emptyCount - 1 - i;
+      const spawn = spawnMap.get(`${r},${c}`);
+      if (!spawn) return false;
+      grid[r][c] = makeTile(spawn.value, spawn.color, r, c, r - emptyCount, { discover: false, interactive: false });
+    }
+  }
+  return true;
 }
 
 function finishReplayAnimation(nextIndex) {
@@ -892,8 +931,17 @@ function animateReplayStep(nextIndex) {
 
   replayTimeout(() => {
     if (!isReplayMode) return;
+    if (!applyReplayGravityAndRefill(frame.spawns || [])) {
+      finishReplayAnimation(nextIndex);
+      return;
+    }
+    updateConnections();
+  }, 230);
+
+  replayTimeout(() => {
+    if (!isReplayMode) return;
     finishReplayAnimation(nextIndex);
-  }, 470);
+  }, 560);
 }
 
 function advanceReplayStep() {
