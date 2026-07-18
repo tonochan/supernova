@@ -64,7 +64,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-07-19 00:46 JST";
+const BUILD_VERSION = "2026-07-19 01:11 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
