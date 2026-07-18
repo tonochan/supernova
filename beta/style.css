@@ -171,16 +171,18 @@ body {
 .tile.merging { z-index: 2; }
 .tile.target  { z-index: 3; }
 
-/* 接続部の隙間を埋めるブリッジと、2x2内部の穴を埋めるパッチ(faceの下に描画) */
+/* 接続部の隙間を埋めるブリッジと、2x2内部の穴を埋めるパッチ(faceの下に描画)。
+   落下中に少し遅れて現れ始め、着地とほぼ同時に接続が完成する */
 .tile .bridge,
 .tile .patch {
   position: absolute;
-  display: none;
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 0.1s ease 0.05s;
 }
 .tile .bridge.on,
 .tile .patch.on {
-  display: block;
+  opacity: 1;
 }
 .tile .bridge.br { left: calc(100% - 4.5px); right: -0.5px; top: 3.5px; bottom: 3.5px; }
 .tile .bridge.bl { right: calc(100% - 4.5px); left: -0.5px; top: 3.5px; bottom: 3.5px; }
@@ -205,6 +207,7 @@ body {
     0 2px 6px rgba(5, 8, 22, 0.35);
   cursor: pointer;
 }
+.tile.shape-reset .face { transition: none; }
 
 /* 記号を囲む進捗リング(次の段階までの割合ぶん、12時から時計回りに塗られる) */
 .tile .core {

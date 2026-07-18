@@ -379,6 +379,25 @@ function findGroup(tile) {
 
 // となり合う同キャラ(色/nova/hole)のタイルを1つのブロブとして見た目上くっつける。
 // あわせて「融合したら次の段階に進むグループ」を全体グローで予告する。
+// タイルを「単体の丸いタイル」の見た目に即リセットする(融合で飛んでいく駒や、
+// グループが消えた直後のタイルが、古いフラットな角のまま残らないように)
+function resetTileShape(tile) {
+  // CSSの通常モーフを一時的に切り、吸い込み開始時点では即座に丸へ戻す。
+  // ここで一度描画を確定することで、この後のupdateConnections()による
+  // 最終形状への変化だけが落下中のモーフとして見える。
+  tile.el.classList.add("shape-reset");
+  const f = tile.faceEl.style;
+  f.borderTopLeftRadius = "13px";
+  f.borderTopRightRadius = "13px";
+  f.borderBottomLeftRadius = "13px";
+  f.borderBottomRightRadius = "13px";
+  for (const key of ["u", "d", "l", "r"]) tile.bridges[key].classList.remove("on");
+  tile.patchEl.classList.remove("on");
+  tile.el.classList.remove("conn-d", "will-nova");
+  void tile.faceEl.offsetWidth;
+  tile.el.classList.remove("shape-reset");
+}
+
 function updateConnections() {
   const R = "13px";
 
@@ -599,7 +618,8 @@ function onTap(tile) {
   const oldTier = tierOf(tile);
   const total = group.reduce((sum, t) => sum + t.value, 0);
 
-  // 1) 仲間タイルがタップ位置へ吸い込まれる
+  // 1) 仲間タイルがタップ位置へ吸い込まれる(全員すぐ丸い単体の見た目に戻す)
+  for (const t of group) resetTileShape(t);
   for (const t of group) {
     if (t === tile) {
       t.el.classList.add("target");
@@ -634,11 +654,12 @@ function onTap(tile) {
       hintEl.classList.add("faded");
     }
 
-    // 3) 落下と補充
+    // 3) 落下と補充。形の再計算は落下開始と同時に行い、
+    //    着地とほぼ同時に角丸・ブリッジが決まるようにする(角が残ってから丸まるのを防ぐ)
     setTimeout(() => {
       applyGravityAndRefill();
+      updateConnections();
       setTimeout(() => {
-        updateConnections();
         busy = false;
         if (!hasMove()) gameOver();
       }, 280);
