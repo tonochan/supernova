@@ -11,6 +11,10 @@ const COLORS = ["red", "yellow", "green", "blue"];
 const NOVA_AT = 26; // Fe: これ以上は超新星でしか作れない
 const HOLE_AT = 119; // 周期表の果て(Og=118)を超えるとブラックホール
 const STORAGE_KEY = "supernova-best";
+const GAME_STATE_KEY = "supernova-game-state";
+const GAME_STATE_KIND = "supernova-game-state";
+const GAME_STATE_SCHEMA_VERSION = 1;
+const GAME_STATE_SAVE_INTERVAL_MS = 5000;
 const REPLAY_KEY = "supernova-last-replay";
 const REPLAY_KIND = "supernova-replay";
 const REPLAY_SCHEMA_VERSION = 1;
@@ -64,7 +68,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-07-19 01:16 JST";
+const BUILD_VERSION = "2026-07-29 05:03 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -785,6 +789,160 @@ function buildReplayFrames(replay) {
   return frames;
 }
 
+// ---------- プレイ中状態の保存 ----------
+
+function cloneJson(value) {
+  return value ? JSON.parse(JSON.stringify(value)) : value;
+}
+
+function canSaveGameState() {
+  return (
+    grid &&
+    !busy &&
+    !isReplayMode &&
+    overlayEl.classList.contains("hidden") &&
+    titleScreen.classList.contains("gone")
+  );
+}
+
+function writeGameState(state) {
+  try {
+    localStorage.setItem(GAME_STATE_KEY, JSON.stringify(state));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function saveGameState() {
+  if (!canSaveGameState()) return;
+  const state = {
+    kind: GAME_STATE_KIND,
+    schemaVersion: GAME_STATE_SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    appVersion: BUILD_VERSION,
+    savedAt: new Date().toISOString(),
+    boardSize: SIZE,
+    grid: snapshotGridData(),
+    score,
+    best,
+    maxTile,
+    firstMergeDone,
+    currentReplay: cloneJson(currentReplay),
+  };
+  if (writeGameState(state)) return;
+  writeGameState({ ...state, currentReplay: null, replayDropped: true });
+}
+
+function clearGameState() {
+  try {
+    localStorage.removeItem(GAME_STATE_KEY);
+  } catch (_) {
+    /* 保存領域が使えない環境では何もしない */
+  }
+}
+
+function cleanSavedReplay(replay, expectedBoardHash) {
+  if (!replay || !isReplayData(replay) || replay.rulesVersion !== RULES_VERSION) return null;
+  try {
+    const clean = cloneJson(replay);
+    clean.final = null;
+    const frames = buildReplayFrames(clean);
+    const lastFrame = frames[frames.length - 1];
+    return lastFrame?.hash === expectedBoardHash ? clean : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function loadGameStateLocal() {
+  try {
+    const raw = localStorage.getItem(GAME_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      !parsed ||
+      parsed.kind !== GAME_STATE_KIND ||
+      parsed.schemaVersion !== GAME_STATE_SCHEMA_VERSION ||
+      parsed.rulesVersion !== RULES_VERSION ||
+      parsed.boardSize !== SIZE
+    ) {
+      throw new Error("Unsupported saved state");
+    }
+
+    const cleanBoard = cleanReplayBoard(parsed.grid);
+    const scoreValue = Number(parsed.score);
+    const maxTileValue = Number(parsed.maxTile);
+    if (!Number.isFinite(scoreValue) || scoreValue < 0) throw new Error("Invalid saved score");
+    if (!Number.isInteger(maxTileValue) || maxTileValue < 1) throw new Error("Invalid saved max tile");
+
+    const boardMaxTile = cleanBoard.flat().reduce((max, cell) => Math.max(max, cell?.value || 1), 1);
+    const boardHash = replayBoardHash(cleanBoard);
+    return {
+      grid: cleanBoard,
+      score: Math.floor(scoreValue),
+      best: Number(parsed.best),
+      maxTile: Math.max(maxTileValue, boardMaxTile),
+      firstMergeDone: Boolean(parsed.firstMergeDone || scoreValue > 0),
+      currentReplay: cleanSavedReplay(parsed.currentReplay, boardHash),
+    };
+  } catch (_) {
+    clearGameState();
+    return null;
+  }
+}
+
+function restoreGameState(state) {
+  if (!state) return false;
+  try {
+    resetReplayMode();
+    currentReplay = null;
+    busy = false;
+    score = state.score;
+    if (Number.isFinite(state.best) && state.best > best) {
+      best = Math.floor(state.best);
+      localStorage.setItem(STORAGE_KEY, String(best));
+    }
+    maxTile = state.maxTile;
+    firstMergeDone = state.firstMergeDone;
+    scoreEl.textContent = fmt(score);
+    bestEl.textContent = fmt(best);
+    overlayEl.classList.add("hidden");
+    titleScreen.classList.add("gone");
+    hintEl.classList.toggle("faded", firstMergeDone);
+    boardEl.querySelectorAll(".tile, .score-pop").forEach((el) => el.remove());
+
+    grid = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const cell = state.grid[r][c];
+        if (cell) grid[r][c] = makeTile(cell.value, cell.color, r, c);
+      }
+    }
+    updateConnections();
+    currentReplay = state.currentReplay;
+    if (!currentReplay) beginReplayRecording();
+
+    if (!hasMove()) {
+      gameOver();
+    } else {
+      saveGameState();
+    }
+    return true;
+  } catch (_) {
+    clearGameState();
+    return false;
+  }
+}
+
+function installGameStateAutosave() {
+  setInterval(saveGameState, GAME_STATE_SAVE_INTERVAL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveGameState();
+  });
+  window.addEventListener("pagehide", saveGameState);
+}
+
 function updateReplayControlsText() {
   const s = STR[lang];
   replayDoneEl.textContent = s.replayDone;
@@ -1040,8 +1198,9 @@ function exitReplay() {
   hintEl.textContent = STR[lang].hint;
   busy = false;
   if (returnTarget === "title") {
-    newGame();
+    newGame({ saveInitialState: false });
     titleScreen.classList.remove("gone");
+    clearGameState();
     return;
   }
   if (replay?.final) showGameOverOverlay(replay.final.score, Boolean(replay.final.isNewBest));
@@ -1214,6 +1373,7 @@ function onTap(tile) {
       setTimeout(() => {
         busy = false;
         if (!hasMove()) gameOver();
+        else saveGameState();
       }, 280);
     }, 60);
   }, 170);
@@ -1281,12 +1441,14 @@ function showGameOverOverlay(finalScore = score, isNewBest = score >= best && sc
 }
 
 function gameOver() {
+  clearGameState();
   const isNewBest = score >= best && score > 0;
   finishReplayRecording("no-move", isNewBest);
   showGameOverOverlay(score, isNewBest);
 }
 
-function newGame() {
+function newGame(options = {}) {
+  const saveInitialState = options.saveInitialState !== false;
   resetReplayMode();
   currentReplay = null;
   busy = false;
@@ -1310,9 +1472,11 @@ function newGame() {
   } while (!hasMove());
   updateConnections();
   beginReplayRecording();
+  if (saveInitialState) saveGameState();
+  else clearGameState();
 }
 
-document.getElementById("restart").addEventListener("click", newGame);
+document.getElementById("restart").addEventListener("click", () => newGame());
 boardEl.addEventListener("pointerdown", () => {
   stepReplayFromBoard();
 });
@@ -1343,6 +1507,7 @@ updateReplayEntryPoints();
 
 document.getElementById("play-btn").addEventListener("click", () => {
   titleScreen.classList.add("gone");
+  saveGameState();
 });
 lastReplayBtnEl.addEventListener("click", () => {
   const replay = getLastReplay();
@@ -1381,8 +1546,9 @@ backModal.addEventListener("click", (e) => {
 });
 document.getElementById("back-yes").addEventListener("click", () => {
   backModal.classList.add("hidden");
-  newGame();
+  newGame({ saveInitialState: false });
   titleScreen.classList.remove("gone");
+  clearGameState();
 });
 
 // ---------- 言語の適用と切替 ----------
@@ -1454,4 +1620,5 @@ window.addEventListener("resize", () => {
 buildPtable();
 refreshPtable();
 applyLang();
-newGame();
+installGameStateAutosave();
+if (!restoreGameState(loadGameStateLocal())) newGame({ saveInitialState: false });
