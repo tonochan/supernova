@@ -18,6 +18,8 @@ const GAME_STATE_SAVE_INTERVAL_MS = 5000;
 const REPLAY_KEY = "supernova-last-replay";
 const REPLAY_KIND = "supernova-replay";
 const REPLAY_SCHEMA_VERSION = 1;
+const REPLAY_SHARE_HASH_KEY = "replay";
+const REPLAY_SHARE_PREFIX = "snr1.";
 const RULES_VERSION = 1;
 
 const ELEMENTS = [
@@ -68,7 +70,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-07-29 05:03 JST";
+const BUILD_VERSION = "2026-07-29 11:20 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -104,6 +106,7 @@ const STR = {
     version: (build) => `Version ${build}`,
     update: "Update to latest version",
     replay: "Replay",
+    shareReplay: "Share",
     lastReplay: "Last replay",
     replayDone: "Done",
     replaySpeed: "Speed",
@@ -114,6 +117,11 @@ const STR = {
     replayStep: (step, total) => `${step} / ${total}`,
     replayHint: "Replay mode",
     replayGuide: "Paused: tap the board to step forward",
+    shareTitle: "SUPERNOVA replay",
+    shareText: "Watch my SUPERNOVA replay",
+    shareCopied: "Replay link copied",
+    shareFailed: "Replay could not be shared",
+    sharedReplay: "Shared replay",
     toastNew: (z, s, n) => `✦ New element! ${z} ${s} — ${n}`,
     toastHole: "✦ You made a BLACK HOLE! ✦",
   },
@@ -147,6 +155,7 @@ const STR = {
     version: (build) => `バージョン ${build}`,
     update: "最新のバージョンに更新",
     replay: "リプレイ",
+    shareReplay: "共有",
     lastReplay: "前回のリプレイ",
     replayDone: "完了",
     replaySpeed: "速度",
@@ -157,6 +166,11 @@ const STR = {
     replayStep: (step, total) => `${step} / ${total}`,
     replayHint: "リプレイ中",
     replayGuide: "停止中は盤面タップで1手すすむ",
+    shareTitle: "SUPERNOVA リプレイ",
+    shareText: "SUPERNOVAのリプレイ",
+    shareCopied: "リプレイリンクをコピーしました",
+    shareFailed: "リプレイを共有できませんでした",
+    sharedReplay: "共有リプレイ",
     toastNew: (z, s, n) => `✦ 新元素はっけん! ${z} ${s} — ${n}`,
     toastHole: "✦ ブラックホール誕生! ✦",
   },
@@ -182,6 +196,7 @@ const finalScoreEl = document.getElementById("final-score");
 const newBestEl = document.getElementById("new-best");
 const hintEl = document.getElementById("hint");
 const replayBtnEl = document.getElementById("replay-btn");
+const shareReplayBtnEl = document.getElementById("share-replay-btn");
 const lastReplayBtnEl = document.getElementById("last-replay-btn");
 const replayControlsEl = document.getElementById("replay-controls");
 const replayDoneEl = document.getElementById("replay-done");
@@ -717,13 +732,17 @@ function findReplayGroup(board, r, c) {
   return group;
 }
 
-function simulateReplayMove(board, move) {
-  const tap = move?.tap;
+function cleanReplayTap(tap) {
   const r = Number(tap?.r);
   const c = Number(tap?.c);
   if (!Number.isInteger(r) || !Number.isInteger(c) || r < 0 || r >= SIZE || c < 0 || c >= SIZE) {
     throw new Error("Invalid replay tap");
   }
+  return { r, c };
+}
+
+function applyReplayMoveSkeleton(board, tap) {
+  const { r, c } = cleanReplayTap(tap);
   const target = board[r][c];
   const group = findReplayGroup(board, r, c);
   if (!target || group.length < 2) throw new Error("Replay move cannot fuse");
@@ -732,12 +751,7 @@ function simulateReplayMove(board, move) {
   for (const [gr, gc] of group) board[gr][gc] = null;
   board[r][c] = { value: gain, color: target.color };
 
-  const spawns = new Map();
-  for (const spawn of move.spawns || []) {
-    const s = cleanReplaySpawn(spawn);
-    spawns.set(`${s.r},${s.c}`, { value: s.value, color: s.color });
-  }
-
+  const slots = [];
   for (let col = 0; col < SIZE; col++) {
     const columnTiles = [];
     for (let row = SIZE - 1; row >= 0; row--) {
@@ -748,12 +762,38 @@ function simulateReplayMove(board, move) {
       if (i < columnTiles.length) {
         board[row][col] = columnTiles[i];
       } else {
-        const spawn = spawns.get(`${row},${col}`);
-        if (!spawn) throw new Error("Replay spawn is missing");
-        board[row][col] = spawn;
+        board[row][col] = null;
+        slots.push({ r: row, c: col });
       }
     }
   }
+  return { gain, slots };
+}
+
+function spawnsForSlots(move, slots) {
+  const spawns = new Map();
+  for (const spawn of move.spawns || []) {
+    const s = cleanReplaySpawn(spawn);
+    spawns.set(`${s.r},${s.c}`, { value: s.value, color: s.color });
+  }
+
+  return slots.map((slot) => {
+    const spawn = spawns.get(`${slot.r},${slot.c}`);
+    if (!spawn) throw new Error("Replay spawn is missing");
+    return spawn;
+  });
+}
+
+function fillReplaySpawnSlots(board, slots, cells) {
+  if (slots.length !== cells.length) throw new Error("Replay spawn count mismatch");
+  slots.forEach((slot, i) => {
+    board[slot.r][slot.c] = cleanReplayCell(cells[i]);
+  });
+}
+
+function simulateReplayMove(board, move) {
+  const { gain, slots } = applyReplayMoveSkeleton(board, move?.tap);
+  fillReplaySpawnSlots(board, slots, spawnsForSlots(move, slots));
   return { gain };
 }
 
@@ -787,6 +827,256 @@ function buildReplayFrames(replay) {
     });
   }
   return frames;
+}
+
+// ---------- リプレイ共有 ----------
+
+function writeVarUint(bytes, value) {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error("Invalid shared replay number");
+  let n = value;
+  do {
+    let byte = n % 128;
+    n = Math.floor(n / 128);
+    if (n > 0) byte |= 128;
+    bytes.push(byte);
+  } while (n > 0);
+}
+
+function makeByteReader(bytes) {
+  let i = 0;
+  return {
+    readByte() {
+      if (i >= bytes.length) throw new Error("Shared replay ended early");
+      return bytes[i++];
+    },
+    readVarUint() {
+      let value = 0;
+      let multiplier = 1;
+      while (true) {
+        const byte = this.readByte();
+        value += (byte & 127) * multiplier;
+        if (value > Number.MAX_SAFE_INTEGER) throw new Error("Shared replay number is too large");
+        if ((byte & 128) === 0) return value;
+        multiplier *= 128;
+      }
+    },
+    done() {
+      return i === bytes.length;
+    },
+  };
+}
+
+function bytesToBase64Url(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.slice(i, i + 0x8000));
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64UrlToBytes(text) {
+  const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = [];
+  for (let i = 0; i < binary.length; i++) bytes.push(binary.charCodeAt(i));
+  return bytes;
+}
+
+function colorToIndex(color) {
+  const index = COLORS.indexOf(color);
+  if (index < 0) throw new Error("Invalid shared replay color");
+  return index;
+}
+
+function writeSharedCell(bytes, cell) {
+  const clean = cleanReplayCell(cell);
+  writeVarUint(bytes, clean.value);
+  bytes.push(colorToIndex(clean.color));
+}
+
+function readSharedCell(reader) {
+  const value = reader.readVarUint();
+  const color = COLORS[reader.readByte()];
+  if (!color) throw new Error("Invalid shared replay color");
+  return cleanReplayCell({ value, color });
+}
+
+function encodeReplayShare(replay) {
+  if (!isReplayData(replay) || replay.rulesVersion !== RULES_VERSION) {
+    throw new Error("Unsupported shared replay");
+  }
+
+  const bytes = [83, 78, 82, 1]; // SNR + share format version
+  writeVarUint(bytes, RULES_VERSION);
+  bytes.push(SIZE);
+
+  const board = cleanReplayBoard(replay.initial);
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) writeSharedCell(bytes, board[r][c]);
+  }
+
+  writeVarUint(bytes, replay.moves.length);
+  for (const move of replay.moves) {
+    const tap = cleanReplayTap(move?.tap);
+    bytes.push(tap.r * SIZE + tap.c);
+    const { slots } = applyReplayMoveSkeleton(board, tap);
+    const cells = spawnsForSlots(move, slots);
+    writeVarUint(bytes, cells.length);
+    for (const cell of cells) writeSharedCell(bytes, cell);
+    fillReplaySpawnSlots(board, slots, cells);
+    if (move.afterHash && move.afterHash !== replayBoardHash(board)) {
+      throw new Error("Shared replay hash mismatch");
+    }
+  }
+
+  return REPLAY_SHARE_PREFIX + bytesToBase64Url(bytes);
+}
+
+function decodeReplayShare(payload) {
+  if (!payload || !payload.startsWith(REPLAY_SHARE_PREFIX)) throw new Error("Invalid shared replay");
+  const bytes = base64UrlToBytes(payload.slice(REPLAY_SHARE_PREFIX.length));
+  const reader = makeByteReader(bytes);
+  if (reader.readByte() !== 83 || reader.readByte() !== 78 || reader.readByte() !== 82) {
+    throw new Error("Invalid shared replay header");
+  }
+  if (reader.readByte() !== 1) throw new Error("Unsupported shared replay format");
+  if (reader.readVarUint() !== RULES_VERSION) throw new Error("Unsupported shared replay rules");
+  if (reader.readByte() !== SIZE) throw new Error("Unsupported shared replay board");
+
+  const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) board[r][c] = readSharedCell(reader);
+  }
+
+  const replay = {
+    kind: REPLAY_KIND,
+    schemaVersion: REPLAY_SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    appVersion: BUILD_VERSION,
+    createdAt: new Date().toISOString(),
+    boardSize: SIZE,
+    rng: { mode: "shared" },
+    initial: cloneGridData(board),
+    moves: [],
+    final: null,
+  };
+
+  let replayScore = 0;
+  let replayMaxTile = 1;
+  const moveCount = reader.readVarUint();
+  for (let i = 0; i < moveCount; i++) {
+    const tapIndex = reader.readByte();
+    if (tapIndex >= SIZE * SIZE) throw new Error("Invalid shared replay tap");
+    const tap = { r: Math.floor(tapIndex / SIZE), c: tapIndex % SIZE };
+    const { gain, slots } = applyReplayMoveSkeleton(board, tap);
+    const spawnCount = reader.readVarUint();
+    if (spawnCount !== slots.length) throw new Error("Invalid shared replay spawn count");
+    const spawns = [];
+    for (const slot of slots) {
+      const cell = readSharedCell(reader);
+      spawns.push({ r: slot.r, c: slot.c, value: cell.value, color: cell.color });
+    }
+    fillReplaySpawnSlots(board, slots, spawns);
+    replayScore += gain;
+    replayMaxTile = Math.max(replayMaxTile, gain);
+    replay.moves.push({ tap, spawns, gain, afterHash: replayBoardHash(board) });
+  }
+  if (!reader.done()) throw new Error("Shared replay has trailing data");
+
+  replay.completedAt = new Date().toISOString();
+  replay.final = {
+    score: replayScore,
+    maxTile: replayMaxTile,
+    endedBy: "shared",
+    moves: replay.moves.length,
+    isNewBest: false,
+    afterHash: replayBoardHash(board),
+  };
+  buildReplayFrames(replay);
+  return replay;
+}
+
+function sharedReplayPayloadFromHash() {
+  const hash = window.location.hash || "";
+  const prefix = `#${REPLAY_SHARE_HASH_KEY}=`;
+  if (!hash.startsWith(prefix)) return null;
+  try {
+    return decodeURIComponent(hash.slice(prefix.length));
+  } catch (_) {
+    return null;
+  }
+}
+
+function replayShareUrl(replay) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = `${REPLAY_SHARE_HASH_KEY}=${encodeReplayShare(replay)}`;
+  return url.toString();
+}
+
+function clearReplayShareHash() {
+  if (!sharedReplayPayloadFromHash()) return;
+  history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+}
+
+function loadSharedReplayFromHash() {
+  const payload = sharedReplayPayloadFromHash();
+  if (!payload) return null;
+  try {
+    return decodeReplayShare(payload);
+  } catch (_) {
+    clearReplayShareHash();
+    showReplayError();
+    return null;
+  }
+}
+
+function copyTextFallback(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  return copied;
+}
+
+async function shareReplay() {
+  const replay = getLastReplay();
+  if (!replay) return;
+
+  let url;
+  try {
+    url = replayShareUrl(replay);
+  } catch (_) {
+    toast(STR[lang].shareFailed);
+    return;
+  }
+
+  const data = { title: STR[lang].shareTitle, text: STR[lang].shareText, url };
+  if (navigator.share) {
+    try {
+      await navigator.share(data);
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+    } else if (!copyTextFallback(url)) {
+      throw new Error("Clipboard failed");
+    }
+    toast(STR[lang].shareCopied);
+  } catch (_) {
+    toast(STR[lang].shareFailed);
+  }
 }
 
 // ---------- プレイ中状態の保存 ----------
@@ -1201,6 +1491,7 @@ function exitReplay() {
     newGame({ saveInitialState: false });
     titleScreen.classList.remove("gone");
     clearGameState();
+    clearReplayShareHash();
     return;
   }
   if (replay?.final) showGameOverOverlay(replay.final.score, Boolean(replay.final.isNewBest));
@@ -1484,6 +1775,7 @@ replayBtnEl.addEventListener("click", () => {
   const replay = getLastReplay();
   if (replay) startReplay(replay, "gameover");
 });
+shareReplayBtnEl.addEventListener("click", shareReplay);
 replayDoneEl.addEventListener("click", exitReplay);
 replayStopEl.addEventListener("click", stopReplay);
 replayPlayEl.addEventListener("click", () => {
@@ -1580,6 +1872,7 @@ function applyLang() {
   setText("version", s.version(BUILD_VERSION));
   setText("update-btn", s.update);
   setText("replay-btn", s.replay);
+  setText("share-replay-btn", s.shareReplay);
   setText("last-replay-btn", s.lastReplay);
   for (const id of ["hs1", "hs2", "hs3", "hs4", "hs5"]) {
     document.getElementById(id).innerHTML = s[id];
@@ -1621,4 +1914,11 @@ buildPtable();
 refreshPtable();
 applyLang();
 installGameStateAutosave();
-if (!restoreGameState(loadGameStateLocal())) newGame({ saveInitialState: false });
+const sharedReplay = loadSharedReplayFromHash();
+if (sharedReplay) {
+  clearGameState();
+  startReplay(sharedReplay, "title");
+  toast(STR[lang].sharedReplay);
+} else if (!restoreGameState(loadGameStateLocal())) {
+  newGame({ saveInitialState: false });
+}
