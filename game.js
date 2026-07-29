@@ -19,7 +19,8 @@ const REPLAY_KEY = "supernova-last-replay";
 const REPLAY_KIND = "supernova-replay";
 const REPLAY_SCHEMA_VERSION = 1;
 const REPLAY_SHARE_HASH_KEY = "replay";
-const REPLAY_SHARE_PREFIX = "snr1.";
+const REPLAY_SHARE_PREFIX = "snr1";
+const REPLAY_SHARE_LEGACY_PREFIXES = ["snr1."];
 const RULES_VERSION = 1;
 
 const ELEMENTS = [
@@ -70,7 +71,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-07-29 11:20 JST";
+const BUILD_VERSION = "2026-07-30 06:14 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -933,9 +934,17 @@ function encodeReplayShare(replay) {
   return REPLAY_SHARE_PREFIX + bytesToBase64Url(bytes);
 }
 
+function sharedReplayBody(payload) {
+  if (!payload) throw new Error("Invalid shared replay");
+  for (const prefix of REPLAY_SHARE_LEGACY_PREFIXES) {
+    if (payload.startsWith(prefix)) return payload.slice(prefix.length);
+  }
+  if (payload.startsWith(REPLAY_SHARE_PREFIX)) return payload.slice(REPLAY_SHARE_PREFIX.length);
+  throw new Error("Invalid shared replay");
+}
+
 function decodeReplayShare(payload) {
-  if (!payload || !payload.startsWith(REPLAY_SHARE_PREFIX)) throw new Error("Invalid shared replay");
-  const bytes = base64UrlToBytes(payload.slice(REPLAY_SHARE_PREFIX.length));
+  const bytes = base64UrlToBytes(sharedReplayBody(payload));
   const reader = makeByteReader(bytes);
   if (reader.readByte() !== 83 || reader.readByte() !== 78 || reader.readByte() !== 82) {
     throw new Error("Invalid shared replay header");
