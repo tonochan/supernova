@@ -19,8 +19,13 @@ const REPLAY_KEY = "supernova-last-replay";
 const REPLAY_KIND = "supernova-replay";
 const REPLAY_SCHEMA_VERSION = 1;
 const REPLAY_SHARE_HASH_KEY = "replay";
+const REPLAY_SHARE_QUERY_KEY = "replay";
 const REPLAY_SHARE_PREFIX = "snr1";
 const REPLAY_SHARE_LEGACY_PREFIXES = ["snr1."];
+const REPLAY_SHARE_SERVER_PREFIX = "srv1";
+const REPLAY_SHARE_SERVER_ID_RE = /^[A-Za-z0-9_-]{16}$/;
+const REPLAY_SHARE_API_BASE = "https://supernova-replay-api.tonosaki-shuntaro.workers.dev/v1";
+const REPLAY_SHARE_LOCAL_API_BASE = "http://127.0.0.1:8787/v1";
 const RULES_VERSION = 1;
 
 const ELEMENTS = [
@@ -71,7 +76,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-07-30 06:14 JST";
+const BUILD_VERSION = "2026-07-30 11:36 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -1006,6 +1011,20 @@ function decodeReplayShare(payload) {
   return replay;
 }
 
+function replayShareApiBase() {
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1") return REPLAY_SHARE_LOCAL_API_BASE;
+  return REPLAY_SHARE_API_BASE;
+}
+
+function isInlineReplaySharePayload(payload) {
+  return (
+    typeof payload === "string" &&
+    (payload.startsWith(REPLAY_SHARE_PREFIX) ||
+      REPLAY_SHARE_LEGACY_PREFIXES.some((prefix) => payload.startsWith(prefix)))
+  );
+}
+
 function sharedReplayPayloadFromHash() {
   const hash = window.location.hash || "";
   const prefix = `#${REPLAY_SHARE_HASH_KEY}=`;
@@ -1017,25 +1036,97 @@ function sharedReplayPayloadFromHash() {
   }
 }
 
-function replayShareUrl(replay) {
+function sharedReplayRefFromLocation() {
+  const url = new URL(window.location.href);
+  const queryValue = url.searchParams.get(REPLAY_SHARE_QUERY_KEY);
+  if (queryValue) {
+    const id = queryValue.startsWith(REPLAY_SHARE_SERVER_PREFIX)
+      ? queryValue.slice(REPLAY_SHARE_SERVER_PREFIX.length)
+      : queryValue;
+    if (REPLAY_SHARE_SERVER_ID_RE.test(id)) return { kind: "server", id };
+    if (isInlineReplaySharePayload(queryValue)) return { kind: "inline", payload: queryValue };
+    return { kind: "invalid" };
+  }
+
+  const hashPayload = sharedReplayPayloadFromHash();
+  if (hashPayload) return { kind: "inline", payload: hashPayload };
+  return null;
+}
+
+function replayShareUrlForServerId(id) {
   const url = new URL(window.location.href);
   url.search = "";
-  url.hash = `${REPLAY_SHARE_HASH_KEY}=${encodeReplayShare(replay)}`;
+  url.hash = "";
+  url.searchParams.set(REPLAY_SHARE_QUERY_KEY, `${REPLAY_SHARE_SERVER_PREFIX}${id}`);
   return url.toString();
 }
 
-function clearReplayShareHash() {
-  if (!sharedReplayPayloadFromHash()) return;
-  history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+function clearReplayShareLocation() {
+  const url = new URL(window.location.href);
+  let changed = false;
+  if (url.searchParams.has(REPLAY_SHARE_QUERY_KEY)) {
+    url.searchParams.delete(REPLAY_SHARE_QUERY_KEY);
+    changed = true;
+  }
+  if ((window.location.hash || "").startsWith(`#${REPLAY_SHARE_HASH_KEY}=`)) {
+    url.hash = "";
+    changed = true;
+  }
+  if (changed) history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
-function loadSharedReplayFromHash() {
-  const payload = sharedReplayPayloadFromHash();
-  if (!payload) return null;
+function replayShareSummary(replay) {
+  return {
+    score: replay.final?.score ?? 0,
+    maxTile: replay.final?.maxTile ?? 0,
+    moves: replay.moves?.length ?? 0,
+    appVersion: replay.appVersion || BUILD_VERSION,
+  };
+}
+
+async function saveReplayShareToServer(replay) {
+  const payload = encodeReplayShare(replay);
+  const response = await fetch(`${replayShareApiBase()}/replays`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      payload,
+      summary: replayShareSummary(replay),
+    }),
+  });
+  if (!response.ok) throw new Error("Replay share save failed");
+  const data = await response.json();
+  if (!REPLAY_SHARE_SERVER_ID_RE.test(data?.id || "")) throw new Error("Invalid replay share id");
+  return data.id;
+}
+
+async function loadReplaySharePayloadFromServer(id) {
+  const response = await fetch(`${replayShareApiBase()}/replays/${encodeURIComponent(id)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("Replay share load failed");
+  const data = await response.json();
+  if (!isInlineReplaySharePayload(data?.payload)) throw new Error("Invalid replay share payload");
+  return data.payload;
+}
+
+async function replayShareUrl(replay) {
+  const id = await saveReplayShareToServer(replay);
+  return replayShareUrlForServerId(id);
+}
+
+async function loadSharedReplayFromLocation() {
+  const ref = sharedReplayRefFromLocation();
+  if (!ref) return null;
   try {
+    if (ref.kind === "invalid") throw new Error("Invalid shared replay ref");
+    const payload = ref.kind === "server" ? await loadReplaySharePayloadFromServer(ref.id) : ref.payload;
     return decodeReplayShare(payload);
   } catch (_) {
-    clearReplayShareHash();
+    clearReplayShareLocation();
     showReplayError();
     return null;
   }
@@ -1060,7 +1151,7 @@ async function shareReplay() {
 
   let url;
   try {
-    url = replayShareUrl(replay);
+    url = await replayShareUrl(replay);
   } catch (_) {
     toast(STR[lang].shareFailed);
     return;
@@ -1919,15 +2010,19 @@ window.addEventListener("resize", () => {
   }
 });
 
-buildPtable();
-refreshPtable();
-applyLang();
-installGameStateAutosave();
-const sharedReplay = loadSharedReplayFromHash();
-if (sharedReplay) {
-  clearGameState();
-  startReplay(sharedReplay, "title");
-  toast(STR[lang].sharedReplay);
-} else if (!restoreGameState(loadGameStateLocal())) {
-  newGame({ saveInitialState: false });
+async function boot() {
+  buildPtable();
+  refreshPtable();
+  applyLang();
+  installGameStateAutosave();
+  const sharedReplay = await loadSharedReplayFromLocation();
+  if (sharedReplay) {
+    clearGameState();
+    startReplay(sharedReplay, "title");
+    toast(STR[lang].sharedReplay);
+  } else if (!restoreGameState(loadGameStateLocal())) {
+    newGame({ saveInitialState: false });
+  }
 }
+
+boot();

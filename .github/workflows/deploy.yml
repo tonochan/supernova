@@ -27,4 +27,4 @@ jobs:
           destination_dir: ${{ github.ref_name == 'beta' && 'beta' || '' }}
           # ルート配信時に beta/ を消さない(逆も同様)
           keep_files: true
-          exclude_assets: '.github,.gitignore'
+          exclude_assets: '.github,.gitignore,workers'
