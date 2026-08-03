@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260804-0818">
+<link rel="stylesheet" href="style.css?v=20260804-0830">
 </head>
 <body>
 
@@ -101,6 +101,7 @@
     <button class="btn" id="play-btn">Play</button>
     <button class="btn btn-ghost" id="howto-btn">How to play</button>
     <button class="btn btn-ghost hidden" id="last-replay-btn">Last replay</button>
+    <button class="btn btn-ghost" id="history-btn">Play history</button>
     <button class="btn btn-ghost btn-mini" id="lang-btn-title">日本語</button>
     <div class="title-release">
       <span class="version" id="version"></span>
@@ -149,6 +150,15 @@
   </div>
 </div>
 
+<div class="modal hidden" id="history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
+  <div class="modal-card">
+    <h2 class="modal-title" id="history-title">Play history</h2>
+    <p class="history-empty hidden" id="history-empty">No saved plays yet</p>
+    <ol class="history-list" id="history-list"></ol>
+    <button class="btn" id="history-close" type="button">Close</button>
+  </div>
+</div>
+
 <div class="modal hidden" id="back-modal">
   <div class="modal-card modal-small">
     <p class="confirm-title" id="back-title">Back to title?</p>
@@ -171,6 +181,6 @@
   </div>
 </div>
 
-<script src="game.js?v=20260804-0818"></script>
+<script src="game.js?v=20260804-0830"></script>
 </body>
 </html>
