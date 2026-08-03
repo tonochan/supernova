@@ -78,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-04 08:37 JST";
+const BUILD_VERSION = "2026-08-04 08:50 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -108,9 +108,9 @@ const STR = {
     backYes: "Back to title",
     backNo: "Cancel",
     impactTitleNova: "Ignite a supernova?",
-    impactTextNova: "The glowing white group is selected. This fusion can reshape the board.",
+    impactTextNova: "The glowing white group is selected.",
     impactTitleHole: "Merge black holes?",
-    impactTextHole: "The glowing black group is selected. This collision can reshape the board.",
+    impactTextHole: "The glowing black group is selected.",
     impactYesNova: "Ignite",
     impactYesHole: "Merge",
     impactNo: "Not now",
@@ -173,9 +173,9 @@ const STR = {
     backYes: "もどる",
     backNo: "キャンセル",
     impactTitleNova: "超新星を起こす?",
-    impactTextNova: "光っている白いグループを融合します。盤面が大きく動きます。",
+    impactTextNova: "光っている白いグループを融合します。",
     impactTitleHole: "ブラックホールを衝突させる?",
-    impactTextHole: "光っている黒いグループを融合します。盤面が大きく動きます。",
+    impactTextHole: "光っている黒いグループを融合します。",
     impactYesNova: "起こす",
     impactYesHole: "融合する",
     impactNo: "今はやめる",
