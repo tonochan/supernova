@@ -78,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-04 08:30 JST";
+const BUILD_VERSION = "2026-08-04 08:37 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -107,12 +107,13 @@ const STR = {
     backText: "Your current game will be lost.",
     backYes: "Back to title",
     backNo: "Cancel",
-    impactTitleNova: "Fuse white blocks?",
-    impactTextNova: "This move can change the board a lot. Fuse them now?",
-    impactTitleHole: "Fuse black blocks?",
-    impactTextHole: "This move can change the board a lot. Fuse them now?",
-    impactYes: "Fuse",
-    impactNo: "Cancel",
+    impactTitleNova: "Ignite a supernova?",
+    impactTextNova: "The glowing white group is selected. This fusion can reshape the board.",
+    impactTitleHole: "Merge black holes?",
+    impactTextHole: "The glowing black group is selected. This collision can reshape the board.",
+    impactYesNova: "Ignite",
+    impactYesHole: "Merge",
+    impactNo: "Not now",
     ptLabel: " / 118 elements",
     ptHole: "· ● black hole",
     holeName: "black hole",
@@ -171,12 +172,13 @@ const STR = {
     backText: "いまのゲームは終了します。",
     backYes: "もどる",
     backNo: "キャンセル",
-    impactTitleNova: "白いブロックを融合する?",
-    impactTextNova: "盤面が大きく動きます。実行しますか?",
-    impactTitleHole: "黒いブロックを融合する?",
-    impactTextHole: "盤面が大きく動きます。実行しますか?",
-    impactYes: "融合する",
-    impactNo: "キャンセル",
+    impactTitleNova: "超新星を起こす?",
+    impactTextNova: "光っている白いグループを融合します。盤面が大きく動きます。",
+    impactTitleHole: "ブラックホールを衝突させる?",
+    impactTextHole: "光っている黒いグループを融合します。盤面が大きく動きます。",
+    impactYesNova: "起こす",
+    impactYesHole: "融合する",
+    impactNo: "今はやめる",
     ptLabel: " / 118 元素",
     ptHole: "· ● ブラックホール",
     holeName: "ブラックホール",
@@ -276,6 +278,7 @@ let replayPlaying = false;
 let replayReturnTarget = "gameover";
 let isReplayMode = false;
 let pendingImpactTile = null;
+let pendingImpactGroup = [];
 
 // ---------- 表示ユーティリティ ----------
 
@@ -1928,17 +1931,33 @@ function updateImpactConfirmText(kind = impactConfirmKind(pendingImpactTile) || 
   const isHole = kind === "hole";
   impactTitleEl.textContent = isHole ? s.impactTitleHole : s.impactTitleNova;
   impactTextEl.textContent = isHole ? s.impactTextHole : s.impactTextNova;
-  impactYesEl.textContent = s.impactYes;
+  impactYesEl.textContent = isHole ? s.impactYesHole : s.impactYesNova;
   impactNoEl.textContent = s.impactNo;
+}
+
+function clearImpactHighlight() {
+  for (const tile of pendingImpactGroup) {
+    tile.el.classList.remove("impact-pending", "impact-anchor");
+  }
+  pendingImpactGroup = [];
+}
+
+function markImpactHighlight(tile) {
+  clearImpactHighlight();
+  pendingImpactGroup = findGroup(tile);
+  for (const groupTile of pendingImpactGroup) groupTile.el.classList.add("impact-pending");
+  tile.el.classList.add("impact-anchor");
 }
 
 function showImpactConfirm(tile) {
   pendingImpactTile = tile;
+  markImpactHighlight(tile);
   updateImpactConfirmText(impactConfirmKind(tile));
   impactModalEl.classList.remove("hidden");
 }
 
 function hideImpactConfirm() {
+  clearImpactHighlight();
   pendingImpactTile = null;
   impactModalEl.classList.add("hidden");
 }
@@ -2239,7 +2258,7 @@ function applyLang() {
   setText("back-no", s.backNo);
   setText("impact-title", s.impactTitleNova);
   setText("impact-text", s.impactTextNova);
-  setText("impact-yes", s.impactYes);
+  setText("impact-yes", s.impactYesNova);
   setText("impact-no", s.impactNo);
   setText("pt-label", s.ptLabel);
   setText("pt-hole", s.ptHole);
