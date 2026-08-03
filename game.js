@@ -76,7 +76,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-07-30 11:36 JST";
+const BUILD_VERSION = "2026-08-03 15:55 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -119,6 +119,7 @@ const STR = {
     replayPlay: "Play",
     replayPause: "Pause",
     replayStop: "Stop",
+    replaySkip: "Skip to end",
     replayPosition: "Replay position",
     replayStep: (step, total) => `${step} / ${total}`,
     replayHint: "Replay mode",
@@ -168,6 +169,7 @@ const STR = {
     replayPlay: "再生",
     replayPause: "一時停止",
     replayStop: "停止",
+    replaySkip: "最後までスキップ",
     replayPosition: "リプレイ位置",
     replayStep: (step, total) => `${step} / ${total}`,
     replayHint: "リプレイ中",
@@ -210,6 +212,7 @@ const replayStepEl = document.getElementById("replay-step");
 const replaySpeedEl = document.getElementById("replay-speed");
 const replayStopEl = document.getElementById("replay-stop");
 const replayPlayEl = document.getElementById("replay-play");
+const replaySkipEl = document.getElementById("replay-skip");
 const replaySliderEl = document.getElementById("replay-slider");
 
 let grid; // grid[r][c] = tile or null
@@ -1338,6 +1341,7 @@ function updateReplayControlsText() {
   replayDoneEl.textContent = s.replayDone;
   replaySpeedEl.setAttribute("aria-label", s.replaySpeed);
   replayStopEl.setAttribute("aria-label", s.replayStop);
+  replaySkipEl.setAttribute("aria-label", s.replaySkip);
   replaySliderEl.setAttribute("aria-label", s.replayPosition);
   replayPlayEl.textContent = replayPlaying ? "Ⅱ" : "▶";
   replayPlayEl.setAttribute("aria-label", replayPlaying ? s.replayPause : s.replayPlay);
@@ -1429,10 +1433,32 @@ function finishReplayAnimation(nextIndex) {
   }
 }
 
+function replaySpeedMultiplier() {
+  return Number(replaySpeedEl.value) || 1;
+}
+
+function shouldUseInstantReplayStep() {
+  return replaySpeedMultiplier() >= 8;
+}
+
+function finishInstantReplayStep(nextIndex) {
+  renderReplayFrame(nextIndex);
+  if (!replayPlaying) return;
+  if (nextIndex >= replayFrames.length - 1) {
+    pauseReplay();
+  } else {
+    scheduleReplayTick();
+  }
+}
+
 function animateReplayStep(nextIndex) {
   if (!replayFrames.length || replayAnimating) return;
   if (nextIndex !== replayIndex + 1 || nextIndex >= replayFrames.length) {
     renderReplayFrame(nextIndex);
+    return;
+  }
+  if (shouldUseInstantReplayStep()) {
+    finishInstantReplayStep(nextIndex);
     return;
   }
 
@@ -1512,7 +1538,7 @@ function pauseReplay(cancelAnimation = false) {
 }
 
 function replayDelay() {
-  return 850 / (Number(replaySpeedEl.value) || 1);
+  return Math.max(24, 850 / replaySpeedMultiplier());
 }
 
 function scheduleReplayTick() {
@@ -1534,6 +1560,12 @@ function playReplay() {
 function stopReplay() {
   pauseReplay(true);
   renderReplayFrame(0);
+}
+
+function skipReplayToEnd() {
+  if (!isReplayMode || !replayFrames.length) return;
+  pauseReplay(true);
+  renderReplayFrame(replayFrames.length - 1);
 }
 
 function resetReplayMode() {
@@ -1882,6 +1914,7 @@ replayPlayEl.addEventListener("click", () => {
   if (replayPlaying) pauseReplay();
   else playReplay();
 });
+replaySkipEl.addEventListener("click", skipReplayToEnd);
 replaySliderEl.addEventListener("input", () => {
   renderReplayFrame(Number(replaySliderEl.value));
   if (replayPlaying) scheduleReplayTick();
