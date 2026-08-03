@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260730-1136">
+<link rel="stylesheet" href="style.css?v=20260803-1555">
 </head>
 <body>
 
@@ -44,9 +44,9 @@
         <p class="overlay-score"><span id="final-score-label">SCORE</span> <strong id="final-score">0</strong></p>
         <p class="overlay-best hidden" id="new-best">✦ New best! ✦</p>
         <div class="overlay-actions">
-          <button class="btn" id="replay-btn">Replay</button>
+          <button class="btn" id="restart">New game</button>
           <button class="btn btn-ghost" id="share-replay-btn">Share</button>
-          <button class="btn btn-ghost" id="restart">New game</button>
+          <button class="btn btn-link" id="replay-btn">Replay</button>
         </div>
       </div>
     </div>
@@ -61,11 +61,14 @@
         <option value="1" selected>1x</option>
         <option value="2">2x</option>
         <option value="4">4x</option>
+        <option value="8">8x</option>
+        <option value="16">16x</option>
       </select>
     </div>
     <div class="replay-transport">
       <button class="replay-icon" id="replay-stop" type="button" aria-label="Stop">■</button>
       <button class="replay-icon replay-play" id="replay-play" type="button" aria-label="Play">▶</button>
+      <button class="replay-icon" id="replay-skip" type="button" aria-label="Skip to end">&gt;&gt;</button>
       <input class="replay-slider" id="replay-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Replay position">
     </div>
   </div>
@@ -157,6 +160,6 @@
   </div>
 </div>
 
-<script src="game.js?v=20260730-1136"></script>
+<script src="game.js?v=20260803-1555"></script>
 </body>
 </html>

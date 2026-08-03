@@ -579,8 +579,8 @@ body.replay-active .hint {
 .overlay-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 18px;
+  gap: 9px;
+  margin-top: 16px;
 }
 .overlay-actions .btn {
   width: 100%;
@@ -588,6 +588,22 @@ body.replay-active .hint {
 }
 .overlay-actions .btn-ghost {
   margin-top: 0 !important;
+}
+.overlay-actions .btn-link {
+  margin-top: -1px;
+  padding: 6px 10px;
+  color: rgba(246, 239, 218, 0.78);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.overlay-actions .btn-link:active {
+  transform: none;
+  box-shadow: none;
+  opacity: 0.72;
 }
 
 .btn {
