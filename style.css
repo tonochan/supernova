@@ -916,6 +916,58 @@ body.replay-active .hint {
   margin: 0 auto;
 }
 
+.history-empty {
+  margin: 8px 0 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  opacity: 0.72;
+}
+.history-empty.hidden { display: none; }
+.history-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(46dvh, 340px);
+  overflow-y: auto;
+  margin: 0 0 18px;
+  padding: 0;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.history-main {
+  min-width: 0;
+  text-align: left;
+}
+.history-score {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+.history-meta {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.7);
+}
+.history-replay {
+  flex: 0 0 auto;
+  min-width: 74px;
+  margin: 0 !important;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
 /* 確認モーダル(小さめ・中央寄せ) */
 .modal-small {
   width: min(84vw, 320px);

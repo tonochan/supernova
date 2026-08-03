@@ -16,6 +16,8 @@ const GAME_STATE_KIND = "supernova-game-state";
 const GAME_STATE_SCHEMA_VERSION = 1;
 const GAME_STATE_SAVE_INTERVAL_MS = 5000;
 const REPLAY_KEY = "supernova-last-replay";
+const REPLAY_HISTORY_KEY = "supernova-replay-history";
+const REPLAY_HISTORY_MAX = 20;
 const REPLAY_KIND = "supernova-replay";
 const REPLAY_SCHEMA_VERSION = 1;
 const REPLAY_SHARE_HASH_KEY = "replay";
@@ -76,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-04 08:18 JST";
+const BUILD_VERSION = "2026-08-04 08:30 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -120,6 +122,14 @@ const STR = {
     replay: "Replay",
     shareReplay: "Share",
     lastReplay: "Last replay",
+    history: "Play history",
+    historyTitle: "Play history",
+    historyEmpty: "No saved plays yet",
+    historyClose: "Close",
+    historyOpen: "Replay",
+    historyScore: "Score",
+    historyMax: "Max",
+    historyMoves: "moves",
     replayDone: "Done",
     replaySpeed: "Speed",
     replayPlay: "Play",
@@ -176,6 +186,14 @@ const STR = {
     replay: "リプレイ",
     shareReplay: "共有",
     lastReplay: "前回のリプレイ",
+    history: "プレイ履歴",
+    historyTitle: "プレイ履歴",
+    historyEmpty: "まだ履歴がありません",
+    historyClose: "閉じる",
+    historyOpen: "リプレイ",
+    historyScore: "スコア",
+    historyMax: "最大",
+    historyMoves: "手",
     replayDone: "完了",
     replaySpeed: "速度",
     replayPlay: "再生",
@@ -218,6 +236,7 @@ const hintEl = document.getElementById("hint");
 const replayBtnEl = document.getElementById("replay-btn");
 const shareReplayBtnEl = document.getElementById("share-replay-btn");
 const lastReplayBtnEl = document.getElementById("last-replay-btn");
+const historyBtnEl = document.getElementById("history-btn");
 const replayControlsEl = document.getElementById("replay-controls");
 const replayDoneEl = document.getElementById("replay-done");
 const replayStepEl = document.getElementById("replay-step");
@@ -231,6 +250,11 @@ const impactTitleEl = document.getElementById("impact-title");
 const impactTextEl = document.getElementById("impact-text");
 const impactYesEl = document.getElementById("impact-yes");
 const impactNoEl = document.getElementById("impact-no");
+const historyModalEl = document.getElementById("history-modal");
+const historyTitleEl = document.getElementById("history-title");
+const historyEmptyEl = document.getElementById("history-empty");
+const historyListEl = document.getElementById("history-list");
+const historyCloseEl = document.getElementById("history-close");
 
 let grid; // grid[r][c] = tile or null
 let score = 0;
@@ -241,6 +265,7 @@ let firstMergeDone = false;
 let maxTile = 1; // このゲームで作った最大の元素(降ってくる元素の幅に影響)
 let currentReplay = null;
 let lastReplay = null;
+let replayHistory = [];
 let activeReplay = null;
 let replayFrames = [];
 let replayIndex = 0;
@@ -646,6 +671,70 @@ function loadReplayLocal() {
   }
 }
 
+function replayHistoryEntryId(replay) {
+  const time = Date.parse(replay.completedAt || replay.createdAt || "") || Date.now();
+  const hash = replay.final?.afterHash || replayBoardHash(replay.initial);
+  return `${time.toString(36)}-${hash}-${replay.moves.length}`;
+}
+
+function cleanReplayHistoryEntry(entry) {
+  const replay = entry?.replay;
+  if (!isReplayData(replay) || !replay.final) return null;
+  return {
+    id: typeof entry.id === "string" && entry.id ? entry.id : replayHistoryEntryId(replay),
+    savedAt: typeof entry.savedAt === "string" ? entry.savedAt : replay.completedAt || replay.createdAt || "",
+    replay,
+  };
+}
+
+function loadReplayHistoryLocal() {
+  try {
+    const raw = localStorage.getItem(REPLAY_HISTORY_KEY);
+    if (!raw) return [];
+    const entries = JSON.parse(raw);
+    if (!Array.isArray(entries)) return [];
+    return entries.map(cleanReplayHistoryEntry).filter(Boolean).slice(0, REPLAY_HISTORY_MAX);
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeReplayHistoryLocal() {
+  const sessionEntries = replayHistory.slice(0, REPLAY_HISTORY_MAX);
+  let entries = sessionEntries;
+  while (entries.length) {
+    try {
+      localStorage.setItem(REPLAY_HISTORY_KEY, JSON.stringify(entries));
+      replayHistory = entries;
+      updateReplayEntryPoints();
+      if (!historyModalEl.classList.contains("hidden")) renderReplayHistory();
+      return;
+    } catch (_) {
+      entries = entries.slice(0, -1);
+    }
+  }
+  try {
+    localStorage.removeItem(REPLAY_HISTORY_KEY);
+  } catch (_) {
+    /* 保存できない環境では、そのセッション中の履歴だけ保持する */
+  }
+  replayHistory = sessionEntries;
+  updateReplayEntryPoints();
+  if (!historyModalEl.classList.contains("hidden")) renderReplayHistory();
+}
+
+function saveReplayHistory(replay) {
+  if (!isReplayData(replay) || !replay.final) return;
+  const entry = cleanReplayHistoryEntry({
+    id: replayHistoryEntryId(replay),
+    savedAt: new Date().toISOString(),
+    replay: cloneJson(replay),
+  });
+  if (!entry) return;
+  replayHistory = [entry, ...replayHistory.filter((item) => item.id !== entry.id)].slice(0, REPLAY_HISTORY_MAX);
+  writeReplayHistoryLocal();
+}
+
 function updateReplayEntryPoints() {
   lastReplayBtnEl.classList.toggle("hidden", !lastReplay);
 }
@@ -703,6 +792,7 @@ function finishReplayRecording(endedBy, isNewBest) {
     afterHash: replayBoardHash(snapshotGridData()),
   };
   saveLastReplay(currentReplay);
+  saveReplayHistory(currentReplay);
 }
 
 function cleanReplayCell(cell) {
@@ -1198,6 +1288,76 @@ async function shareReplay() {
   } catch (_) {
     toast(STR[lang].shareFailed);
   }
+}
+
+function formatHistoryDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(lang === "ja" ? "ja-JP" : "en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function historyMaxLabel(value) {
+  if (value >= HOLE_AT) return `${STR[lang].holeName} ${fmt(value)}`;
+  if (value >= 1 && value <= ELEMENTS.length) return `${ELEMENTS[value - 1]} ${value}`;
+  return fmt(value);
+}
+
+function renderReplayHistory() {
+  const s = STR[lang];
+  historyTitleEl.textContent = s.historyTitle;
+  historyEmptyEl.textContent = s.historyEmpty;
+  historyCloseEl.textContent = s.historyClose;
+  historyListEl.replaceChildren();
+  historyEmptyEl.classList.toggle("hidden", replayHistory.length > 0);
+
+  for (const entry of replayHistory) {
+    const replay = entry.replay;
+    const final = replay.final || {};
+    const item = document.createElement("li");
+    item.className = "history-item";
+
+    const main = document.createElement("div");
+    main.className = "history-main";
+    const scoreLine = document.createElement("div");
+    scoreLine.className = "history-score";
+    scoreLine.textContent = `${s.historyScore} ${fmt(final.score || 0)}`;
+    const metaLine = document.createElement("div");
+    metaLine.className = "history-meta";
+    const dateLabel = formatHistoryDate(entry.savedAt || replay.completedAt || replay.createdAt);
+    const metaParts = [
+      dateLabel,
+      `${final.moves ?? replay.moves.length} ${s.historyMoves}`,
+      `${s.historyMax} ${historyMaxLabel(final.maxTile || 1)}`,
+    ].filter(Boolean);
+    metaLine.textContent = metaParts.join(" · ");
+    main.append(scoreLine, metaLine);
+
+    const replayButton = document.createElement("button");
+    replayButton.className = "btn history-replay";
+    replayButton.type = "button";
+    replayButton.textContent = s.historyOpen;
+    replayButton.addEventListener("click", () => {
+      historyModalEl.classList.add("hidden");
+      startReplay(replay, "title");
+    });
+
+    item.append(main, replayButton);
+    historyListEl.appendChild(item);
+  }
+}
+
+function openReplayHistory() {
+  renderReplayHistory();
+  historyModalEl.classList.remove("hidden");
+}
+
+function closeReplayHistory() {
+  historyModalEl.classList.add("hidden");
 }
 
 // ---------- プレイ中状態の保存 ----------
@@ -1995,6 +2155,7 @@ replaySpeedEl.addEventListener("change", () => {
 const titleScreen = document.getElementById("title-screen");
 const helpModal = document.getElementById("help-modal");
 lastReplay = loadReplayLocal();
+replayHistory = loadReplayHistoryLocal();
 updateReplayEntryPoints();
 
 document.getElementById("play-btn").addEventListener("click", () => {
@@ -2005,6 +2166,7 @@ lastReplayBtnEl.addEventListener("click", () => {
   const replay = getLastReplay();
   if (replay) startReplay(replay, "title");
 });
+historyBtnEl.addEventListener("click", openReplayHistory);
 document.getElementById("howto-btn").addEventListener("click", () => {
   helpModal.classList.remove("hidden");
 });
@@ -2022,6 +2184,10 @@ document.getElementById("help-close").addEventListener("click", () => {
 // カードの外側をタップしても閉じる
 helpModal.addEventListener("click", (e) => {
   if (e.target === helpModal) helpModal.classList.add("hidden");
+});
+historyCloseEl.addEventListener("click", closeReplayHistory);
+historyModalEl.addEventListener("click", (e) => {
+  if (e.target === historyModalEl) closeReplayHistory();
 });
 
 // 戻るボタン → 確認モーダル → ホーム(タイトル)へ。ゲームはリセットされる
@@ -2084,10 +2250,12 @@ function applyLang() {
   setText("replay-btn", s.replay);
   setText("share-replay-btn", s.shareReplay);
   setText("last-replay-btn", s.lastReplay);
+  setText("history-btn", s.history);
   for (const id of ["hs1", "hs2", "hs3", "hs4", "hs5"]) {
     document.getElementById(id).innerHTML = s[id];
   }
   if (isImpactConfirmOpen()) updateImpactConfirmText();
+  if (!historyModalEl.classList.contains("hidden")) renderReplayHistory();
   updateReplayControlsText();
   // タイル上の元素名と周期表のツールチップも切り替える
   if (grid) {
