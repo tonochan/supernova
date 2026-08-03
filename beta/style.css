@@ -177,9 +177,26 @@ body.replay-active .hint {
 }
 .tile.merging { z-index: 2; }
 .tile.target  { z-index: 3; }
+.tile.impact-pending { z-index: 4; }
+.tile.impact-anchor { z-index: 5; }
 .tile.replay-tap .face {
   outline: 2px solid rgba(255, 246, 214, 0.92);
   outline-offset: -4px;
+}
+.tile.impact-pending .face {
+  outline: 2px solid rgba(255, 246, 214, 0.94);
+  outline-offset: -4px;
+  box-shadow:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.16),
+    0 0 0 2px rgba(244, 201, 93, 0.22),
+    0 0 18px rgba(255, 238, 174, 0.54);
+}
+.tile.impact-anchor .face {
+  outline-color: var(--gold);
+  box-shadow:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.16),
+    0 0 0 3px rgba(244, 201, 93, 0.38),
+    0 0 24px rgba(255, 238, 174, 0.74);
 }
 
 /* 接続部の隙間を埋めるブリッジと、2x2内部の穴を埋めるパッチ(faceの下に描画)。
@@ -914,6 +931,33 @@ body.replay-active .hint {
 .modal-card .btn {
   display: block;
   margin: 0 auto;
+}
+
+.impact-modal {
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 14px calc(env(safe-area-inset-bottom) + 14px);
+  background: transparent;
+  backdrop-filter: none;
+}
+.impact-modal .modal-card {
+  width: min(92vw, 380px);
+  max-height: none;
+  overflow: visible;
+  padding: 16px 16px 14px;
+  border-radius: 14px;
+  background: rgba(17, 22, 46, 0.9);
+  border-color: rgba(244, 201, 93, 0.32);
+  box-shadow: 0 10px 28px rgba(5, 8, 22, 0.48);
+}
+.impact-modal .confirm-title {
+  margin-bottom: 5px;
+}
+.impact-modal .confirm-text {
+  margin-bottom: 12px;
+}
+.impact-modal .confirm-buttons {
+  gap: 7px;
 }
 
 .history-empty {
