@@ -76,7 +76,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-03 15:55 JST";
+const BUILD_VERSION = "2026-08-04 08:18 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -105,6 +105,12 @@ const STR = {
     backText: "Your current game will be lost.",
     backYes: "Back to title",
     backNo: "Cancel",
+    impactTitleNova: "Fuse white blocks?",
+    impactTextNova: "This move can change the board a lot. Fuse them now?",
+    impactTitleHole: "Fuse black blocks?",
+    impactTextHole: "This move can change the board a lot. Fuse them now?",
+    impactYes: "Fuse",
+    impactNo: "Cancel",
     ptLabel: " / 118 elements",
     ptHole: "· ● black hole",
     holeName: "black hole",
@@ -155,6 +161,12 @@ const STR = {
     backText: "いまのゲームは終了します。",
     backYes: "もどる",
     backNo: "キャンセル",
+    impactTitleNova: "白いブロックを融合する?",
+    impactTextNova: "盤面が大きく動きます。実行しますか?",
+    impactTitleHole: "黒いブロックを融合する?",
+    impactTextHole: "盤面が大きく動きます。実行しますか?",
+    impactYes: "融合する",
+    impactNo: "キャンセル",
     ptLabel: " / 118 元素",
     ptHole: "· ● ブラックホール",
     holeName: "ブラックホール",
@@ -214,6 +226,11 @@ const replayStopEl = document.getElementById("replay-stop");
 const replayPlayEl = document.getElementById("replay-play");
 const replaySkipEl = document.getElementById("replay-skip");
 const replaySliderEl = document.getElementById("replay-slider");
+const impactModalEl = document.getElementById("impact-modal");
+const impactTitleEl = document.getElementById("impact-title");
+const impactTextEl = document.getElementById("impact-text");
+const impactYesEl = document.getElementById("impact-yes");
+const impactNoEl = document.getElementById("impact-no");
 
 let grid; // grid[r][c] = tile or null
 let score = 0;
@@ -233,6 +250,7 @@ let replayAnimating = false;
 let replayPlaying = false;
 let replayReturnTarget = "gameover";
 let isReplayMode = false;
+let pendingImpactTile = null;
 
 // ---------- 表示ユーティリティ ----------
 
@@ -1735,17 +1753,47 @@ function blip(value) {
 
 // ---------- メインの操作 ----------
 
-function onTap(tile) {
-  if (isReplayMode || busy || overlayEl.classList.contains("hidden") === false) return;
-  if (grid[tile.r][tile.c] !== tile) return;
+function impactConfirmKind(tile) {
+  if (!tile) return null;
+  const tier = tierOf(tile);
+  return tier === "nova" || tier === "hole" ? tier : null;
+}
 
+function isImpactConfirmOpen() {
+  return !impactModalEl.classList.contains("hidden");
+}
+
+function updateImpactConfirmText(kind = impactConfirmKind(pendingImpactTile) || "nova") {
+  const s = STR[lang];
+  const isHole = kind === "hole";
+  impactTitleEl.textContent = isHole ? s.impactTitleHole : s.impactTitleNova;
+  impactTextEl.textContent = isHole ? s.impactTextHole : s.impactTextNova;
+  impactYesEl.textContent = s.impactYes;
+  impactNoEl.textContent = s.impactNo;
+}
+
+function showImpactConfirm(tile) {
+  pendingImpactTile = tile;
+  updateImpactConfirmText(impactConfirmKind(tile));
+  impactModalEl.classList.remove("hidden");
+}
+
+function hideImpactConfirm() {
+  pendingImpactTile = null;
+  impactModalEl.classList.add("hidden");
+}
+
+function confirmImpactMerge() {
+  const tile = pendingImpactTile;
+  hideImpactConfirm();
+  if (!tile || isReplayMode || busy || overlayEl.classList.contains("hidden") === false) return;
+  if (grid[tile.r]?.[tile.c] !== tile || !impactConfirmKind(tile)) return;
   const group = findGroup(tile);
-  if (group.length < 2) {
-    tile.el.classList.add("shake");
-    setTimeout(() => tile.el.classList.remove("shake"), 320);
-    return;
-  }
+  if (group.length < 2) return;
+  mergeTileGroup(tile, group);
+}
 
+function mergeTileGroup(tile, group) {
   busy = true;
   const oldTier = tierOf(tile);
   const total = group.reduce((sum, t) => sum + t.value, 0);
@@ -1800,6 +1848,25 @@ function onTap(tile) {
       }, 280);
     }, 60);
   }, 170);
+}
+
+function onTap(tile) {
+  if (isReplayMode || busy || isImpactConfirmOpen() || overlayEl.classList.contains("hidden") === false) return;
+  if (grid[tile.r][tile.c] !== tile) return;
+
+  const group = findGroup(tile);
+  if (group.length < 2) {
+    tile.el.classList.add("shake");
+    setTimeout(() => tile.el.classList.remove("shake"), 320);
+    return;
+  }
+
+  if (impactConfirmKind(tile)) {
+    showImpactConfirm(tile);
+    return;
+  }
+
+  mergeTileGroup(tile, group);
 }
 
 function applyGravityAndRefill() {
@@ -1976,6 +2043,12 @@ document.getElementById("back-yes").addEventListener("click", () => {
   clearGameState();
 });
 
+impactYesEl.addEventListener("click", confirmImpactMerge);
+impactNoEl.addEventListener("click", hideImpactConfirm);
+impactModalEl.addEventListener("click", (e) => {
+  if (e.target === impactModalEl) hideImpactConfirm();
+});
+
 // ---------- 言語の適用と切替 ----------
 
 function applyLang() {
@@ -1998,6 +2071,10 @@ function applyLang() {
   setText("back-text", s.backText);
   setText("back-yes", s.backYes);
   setText("back-no", s.backNo);
+  setText("impact-title", s.impactTitleNova);
+  setText("impact-text", s.impactTextNova);
+  setText("impact-yes", s.impactYes);
+  setText("impact-no", s.impactNo);
   setText("pt-label", s.ptLabel);
   setText("pt-hole", s.ptHole);
   setText("lang-btn", s.langBtn);
@@ -2010,6 +2087,7 @@ function applyLang() {
   for (const id of ["hs1", "hs2", "hs3", "hs4", "hs5"]) {
     document.getElementById(id).innerHTML = s[id];
   }
+  if (isImpactConfirmOpen()) updateImpactConfirmText();
   updateReplayControlsText();
   // タイル上の元素名と周期表のツールチップも切り替える
   if (grid) {
