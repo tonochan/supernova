@@ -195,7 +195,7 @@ body.replay-active .hint {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 76%;
+  width: 112%;
   aspect-ratio: 1;
   border: 2px solid rgba(255, 76, 96, 0.98);
   border-radius: 50%;
@@ -217,15 +217,15 @@ body.replay-active .hint {
 }
 .impact-reticle::before {
   left: 50%;
-  top: -22%;
+  top: -16%;
   width: 2px;
-  height: 144%;
+  height: 132%;
   transform: translateX(-50%);
 }
 .impact-reticle::after {
-  left: -22%;
+  left: -16%;
   top: 50%;
-  width: 144%;
+  width: 132%;
   height: 2px;
   transform: translateY(-50%);
 }
