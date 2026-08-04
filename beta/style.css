@@ -198,6 +198,63 @@ body.replay-active .hint {
     0 0 0 3px rgba(244, 201, 93, 0.38),
     0 0 24px rgba(255, 238, 174, 0.74);
 }
+.impact-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 76%;
+  aspect-ratio: 1;
+  border: 2px solid rgba(244, 201, 93, 0.92);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 5px rgba(244, 201, 93, 0.13),
+    0 0 18px rgba(255, 238, 174, 0.68);
+  pointer-events: none;
+  z-index: 6;
+  animation: impact-lock-ring 1s ease-in-out infinite;
+}
+.impact-reticle::before,
+.impact-reticle::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 246, 214, 0.88);
+  filter: drop-shadow(0 0 6px rgba(244, 201, 93, 0.82));
+  animation: impact-lock-line 1s ease-in-out infinite;
+}
+.impact-reticle::before {
+  left: 50%;
+  top: -22%;
+  width: 2px;
+  height: 144%;
+  transform: translateX(-50%);
+}
+.impact-reticle::after {
+  left: -22%;
+  top: 50%;
+  width: 144%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+@keyframes impact-lock-ring {
+  0%, 100% {
+    opacity: 0.82;
+    transform: translate(-50%, -50%) scale(0.86);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+}
+
+@keyframes impact-lock-line {
+  0%, 100% {
+    opacity: 0.76;
+  }
+  50% {
+    opacity: 1;
+  }
+}
 
 /* 接続部の隙間を埋めるブリッジと、2x2内部の穴を埋めるパッチ(faceの下に描画)。
    角丸と同一フレームで切り替え、接続前の平らな角を露出させない */
@@ -937,7 +994,7 @@ body.replay-active .hint {
   align-items: flex-end;
   justify-content: center;
   padding: 0 14px calc(env(safe-area-inset-bottom) + 14px);
-  background: rgba(5, 8, 22, 0.24);
+  background: rgba(5, 8, 22, 0.34);
   backdrop-filter: none;
 }
 .impact-modal .modal-card {

@@ -78,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-04 08:50 JST";
+const BUILD_VERSION = "2026-08-04 09:47 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -1893,22 +1893,48 @@ function refreshPtable() {
 
 let audioCtx = null;
 
+function getAudioContext() {
+  audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
 function blip(value) {
   try {
-    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === "suspended") audioCtx.resume();
-    const t = audioCtx.currentTime;
+    const ctx = getAudioContext();
+    const t = ctx.currentTime;
     const pitch = Math.min(Math.log2(value), 14);
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
     osc.type = "sine";
     osc.frequency.setValueAtTime(220 * 2 ** (pitch / 6), t);
     osc.frequency.exponentialRampToValueAtTime(330 * 2 ** (pitch / 6), t + 0.08);
     gain.gain.setValueAtTime(0.12, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-    osc.connect(gain).connect(audioCtx.destination);
+    osc.connect(gain).connect(ctx.destination);
     osc.start(t);
     osc.stop(t + 0.2);
+  } catch (_) {
+    /* 音が出せない環境では黙って続行 */
+  }
+}
+
+function cueImpactConfirm(kind) {
+  try {
+    const ctx = getAudioContext();
+    const t = ctx.currentTime;
+    const isHole = kind === "hole";
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = isHole ? "triangle" : "sine";
+    osc.frequency.setValueAtTime(isHole ? 176 : 392, t);
+    osc.frequency.exponentialRampToValueAtTime(isHole ? 118 : 659, t + 0.12);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.085, t + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.22);
   } catch (_) {
     /* 音が出せない環境では黙って続行 */
   }
@@ -1939,6 +1965,7 @@ function clearImpactHighlight() {
   for (const tile of pendingImpactGroup) {
     tile.el.classList.remove("impact-pending", "impact-anchor");
   }
+  boardEl.querySelectorAll(".impact-reticle").forEach((el) => el.remove());
   pendingImpactGroup = [];
 }
 
@@ -1947,13 +1974,19 @@ function markImpactHighlight(tile) {
   pendingImpactGroup = findGroup(tile);
   for (const groupTile of pendingImpactGroup) groupTile.el.classList.add("impact-pending");
   tile.el.classList.add("impact-anchor");
+  const reticle = document.createElement("span");
+  reticle.className = "impact-reticle";
+  reticle.setAttribute("aria-hidden", "true");
+  tile.faceEl.appendChild(reticle);
 }
 
 function showImpactConfirm(tile) {
+  const kind = impactConfirmKind(tile);
   pendingImpactTile = tile;
   markImpactHighlight(tile);
-  updateImpactConfirmText(impactConfirmKind(tile));
+  updateImpactConfirmText(kind);
   impactModalEl.classList.remove("hidden");
+  cueImpactConfirm(kind);
 }
 
 function hideImpactConfirm() {
