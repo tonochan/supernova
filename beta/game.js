@@ -78,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-04 09:47 JST";
+const BUILD_VERSION = "2026-08-04 11:01 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -1619,7 +1619,7 @@ function replaySpeedMultiplier() {
 }
 
 function shouldUseInstantReplayStep() {
-  return replaySpeedMultiplier() >= 8;
+  return replaySpeedMultiplier() > 8;
 }
 
 function finishInstantReplayStep(nextIndex) {
@@ -1719,6 +1719,7 @@ function pauseReplay(cancelAnimation = false) {
 }
 
 function replayDelay() {
+  if (replaySpeedMultiplier() >= 8) return 24;
   return Math.max(24, 850 / replaySpeedMultiplier());
 }
 
