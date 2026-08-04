@@ -78,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-04 11:14 JST";
+const BUILD_VERSION = "2026-08-04 11:32 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -422,7 +422,7 @@ function makeTile(value, color, r, c, spawnFromRow = null, options = {}) {
   face.appendChild(name);
   el.appendChild(face);
 
-  const tile = { id: nextId++, value, color, r, c, el, symEl: sym, massEl: mass, nameEl: name, faceEl: face, bridges, patchEl: patch };
+  const tile = { id: nextId++, value, color, r, c, el, symEl: sym, massEl: mass, nameEl: name, faceEl: face, coreEl: core, bridges, patchEl: patch };
   refreshTileFace(tile);
   if (options.discover !== false) noteDiscovery(value, true); // 盤面に出現した元素も周期表に灯る(トーストなし)
 
@@ -1978,7 +1978,7 @@ function markImpactHighlight(tile) {
   const reticle = document.createElement("span");
   reticle.className = "impact-reticle";
   reticle.setAttribute("aria-hidden", "true");
-  tile.faceEl.appendChild(reticle);
+  tile.coreEl.appendChild(reticle);
 }
 
 function showImpactConfirm(tile) {
