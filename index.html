@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260730-1136">
+<link rel="stylesheet" href="style.css?v=20260804-1132">
 </head>
 <body>
 
@@ -44,9 +44,9 @@
         <p class="overlay-score"><span id="final-score-label">SCORE</span> <strong id="final-score">0</strong></p>
         <p class="overlay-best hidden" id="new-best">✦ New best! ✦</p>
         <div class="overlay-actions">
-          <button class="btn" id="replay-btn">Replay</button>
+          <button class="btn" id="restart">New game</button>
           <button class="btn btn-ghost" id="share-replay-btn">Share</button>
-          <button class="btn btn-ghost" id="restart">New game</button>
+          <button class="btn btn-link" id="replay-btn">Replay</button>
         </div>
       </div>
     </div>
@@ -58,14 +58,17 @@
       <span class="replay-step" id="replay-step">0 / 0</span>
       <select class="replay-speed" id="replay-speed" aria-label="Speed">
         <option value="0.5">0.5x</option>
-        <option value="1" selected>1x</option>
+        <option value="1">1x</option>
         <option value="2">2x</option>
         <option value="4">4x</option>
+        <option value="8" selected>8x</option>
+        <option value="16">16x</option>
       </select>
     </div>
     <div class="replay-transport">
       <button class="replay-icon" id="replay-stop" type="button" aria-label="Stop">■</button>
       <button class="replay-icon replay-play" id="replay-play" type="button" aria-label="Play">▶</button>
+      <button class="replay-icon" id="replay-skip" type="button" aria-label="Skip to end">&gt;&gt;</button>
       <input class="replay-slider" id="replay-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Replay position">
     </div>
   </div>
@@ -98,6 +101,7 @@
     <button class="btn" id="play-btn">Play</button>
     <button class="btn btn-ghost" id="howto-btn">How to play</button>
     <button class="btn btn-ghost hidden" id="last-replay-btn">Last replay</button>
+    <button class="btn btn-ghost" id="history-btn">Play history</button>
     <button class="btn btn-ghost btn-mini" id="lang-btn-title">日本語</button>
     <div class="title-release">
       <span class="version" id="version"></span>
@@ -146,6 +150,15 @@
   </div>
 </div>
 
+<div class="modal hidden" id="history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
+  <div class="modal-card">
+    <h2 class="modal-title" id="history-title">Play history</h2>
+    <p class="history-empty hidden" id="history-empty">No saved plays yet</p>
+    <ol class="history-list" id="history-list"></ol>
+    <button class="btn" id="history-close" type="button">Close</button>
+  </div>
+</div>
+
 <div class="modal hidden" id="back-modal">
   <div class="modal-card modal-small">
     <p class="confirm-title" id="back-title">Back to title?</p>
@@ -157,6 +170,17 @@
   </div>
 </div>
 
-<script src="game.js?v=20260730-1136"></script>
+<div class="modal impact-modal hidden" id="impact-modal" role="dialog" aria-modal="true" aria-labelledby="impact-title">
+  <div class="modal-card modal-small">
+    <p class="confirm-title" id="impact-title">Fuse this group?</p>
+    <p class="confirm-text" id="impact-text">This move has a big impact.</p>
+    <div class="confirm-buttons">
+      <button class="btn" id="impact-yes" type="button">Fuse</button>
+      <button class="btn btn-ghost" id="impact-no" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="game.js?v=20260804-1132"></script>
 </body>
 </html>

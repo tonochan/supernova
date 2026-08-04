@@ -16,6 +16,8 @@ const GAME_STATE_KIND = "supernova-game-state";
 const GAME_STATE_SCHEMA_VERSION = 1;
 const GAME_STATE_SAVE_INTERVAL_MS = 5000;
 const REPLAY_KEY = "supernova-last-replay";
+const REPLAY_HISTORY_KEY = "supernova-replay-history";
+const REPLAY_HISTORY_MAX = 20;
 const REPLAY_KIND = "supernova-replay";
 const REPLAY_SCHEMA_VERSION = 1;
 const REPLAY_SHARE_HASH_KEY = "replay";
@@ -76,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-07-30 11:36 JST";
+const BUILD_VERSION = "2026-08-04 11:32 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -105,6 +107,13 @@ const STR = {
     backText: "Your current game will be lost.",
     backYes: "Back to title",
     backNo: "Cancel",
+    impactTitleNova: "Ignite a supernova?",
+    impactTextNova: "The glowing white group is selected.",
+    impactTitleHole: "Merge black holes?",
+    impactTextHole: "The glowing black group is selected.",
+    impactYesNova: "Ignite",
+    impactYesHole: "Merge",
+    impactNo: "Not now",
     ptLabel: " / 118 elements",
     ptHole: "· ● black hole",
     holeName: "black hole",
@@ -114,11 +123,20 @@ const STR = {
     replay: "Replay",
     shareReplay: "Share",
     lastReplay: "Last replay",
+    history: "Play history",
+    historyTitle: "Play history",
+    historyEmpty: "No saved plays yet",
+    historyClose: "Close",
+    historyOpen: "Replay",
+    historyScore: "Score",
+    historyMax: "Max",
+    historyMoves: "moves",
     replayDone: "Done",
     replaySpeed: "Speed",
     replayPlay: "Play",
     replayPause: "Pause",
     replayStop: "Stop",
+    replaySkip: "Skip to end",
     replayPosition: "Replay position",
     replayStep: (step, total) => `${step} / ${total}`,
     replayHint: "Replay mode",
@@ -154,6 +172,13 @@ const STR = {
     backText: "いまのゲームは終了します。",
     backYes: "もどる",
     backNo: "キャンセル",
+    impactTitleNova: "超新星を起こす?",
+    impactTextNova: "光っている白いグループを融合します。",
+    impactTitleHole: "ブラックホールを衝突させる?",
+    impactTextHole: "光っている黒いグループを融合します。",
+    impactYesNova: "起こす",
+    impactYesHole: "融合する",
+    impactNo: "今はやめる",
     ptLabel: " / 118 元素",
     ptHole: "· ● ブラックホール",
     holeName: "ブラックホール",
@@ -163,11 +188,20 @@ const STR = {
     replay: "リプレイ",
     shareReplay: "共有",
     lastReplay: "前回のリプレイ",
+    history: "プレイ履歴",
+    historyTitle: "プレイ履歴",
+    historyEmpty: "まだ履歴がありません",
+    historyClose: "閉じる",
+    historyOpen: "リプレイ",
+    historyScore: "スコア",
+    historyMax: "最大",
+    historyMoves: "手",
     replayDone: "完了",
     replaySpeed: "速度",
     replayPlay: "再生",
     replayPause: "一時停止",
     replayStop: "停止",
+    replaySkip: "最後までスキップ",
     replayPosition: "リプレイ位置",
     replayStep: (step, total) => `${step} / ${total}`,
     replayHint: "リプレイ中",
@@ -204,13 +238,25 @@ const hintEl = document.getElementById("hint");
 const replayBtnEl = document.getElementById("replay-btn");
 const shareReplayBtnEl = document.getElementById("share-replay-btn");
 const lastReplayBtnEl = document.getElementById("last-replay-btn");
+const historyBtnEl = document.getElementById("history-btn");
 const replayControlsEl = document.getElementById("replay-controls");
 const replayDoneEl = document.getElementById("replay-done");
 const replayStepEl = document.getElementById("replay-step");
 const replaySpeedEl = document.getElementById("replay-speed");
 const replayStopEl = document.getElementById("replay-stop");
 const replayPlayEl = document.getElementById("replay-play");
+const replaySkipEl = document.getElementById("replay-skip");
 const replaySliderEl = document.getElementById("replay-slider");
+const impactModalEl = document.getElementById("impact-modal");
+const impactTitleEl = document.getElementById("impact-title");
+const impactTextEl = document.getElementById("impact-text");
+const impactYesEl = document.getElementById("impact-yes");
+const impactNoEl = document.getElementById("impact-no");
+const historyModalEl = document.getElementById("history-modal");
+const historyTitleEl = document.getElementById("history-title");
+const historyEmptyEl = document.getElementById("history-empty");
+const historyListEl = document.getElementById("history-list");
+const historyCloseEl = document.getElementById("history-close");
 
 let grid; // grid[r][c] = tile or null
 let score = 0;
@@ -221,6 +267,7 @@ let firstMergeDone = false;
 let maxTile = 1; // このゲームで作った最大の元素(降ってくる元素の幅に影響)
 let currentReplay = null;
 let lastReplay = null;
+let replayHistory = [];
 let activeReplay = null;
 let replayFrames = [];
 let replayIndex = 0;
@@ -230,6 +277,8 @@ let replayAnimating = false;
 let replayPlaying = false;
 let replayReturnTarget = "gameover";
 let isReplayMode = false;
+let pendingImpactTile = null;
+let pendingImpactGroup = [];
 
 // ---------- 表示ユーティリティ ----------
 
@@ -373,7 +422,7 @@ function makeTile(value, color, r, c, spawnFromRow = null, options = {}) {
   face.appendChild(name);
   el.appendChild(face);
 
-  const tile = { id: nextId++, value, color, r, c, el, symEl: sym, massEl: mass, nameEl: name, faceEl: face, bridges, patchEl: patch };
+  const tile = { id: nextId++, value, color, r, c, el, symEl: sym, massEl: mass, nameEl: name, faceEl: face, coreEl: core, bridges, patchEl: patch };
   refreshTileFace(tile);
   if (options.discover !== false) noteDiscovery(value, true); // 盤面に出現した元素も周期表に灯る(トーストなし)
 
@@ -625,6 +674,70 @@ function loadReplayLocal() {
   }
 }
 
+function replayHistoryEntryId(replay) {
+  const time = Date.parse(replay.completedAt || replay.createdAt || "") || Date.now();
+  const hash = replay.final?.afterHash || replayBoardHash(replay.initial);
+  return `${time.toString(36)}-${hash}-${replay.moves.length}`;
+}
+
+function cleanReplayHistoryEntry(entry) {
+  const replay = entry?.replay;
+  if (!isReplayData(replay) || !replay.final) return null;
+  return {
+    id: typeof entry.id === "string" && entry.id ? entry.id : replayHistoryEntryId(replay),
+    savedAt: typeof entry.savedAt === "string" ? entry.savedAt : replay.completedAt || replay.createdAt || "",
+    replay,
+  };
+}
+
+function loadReplayHistoryLocal() {
+  try {
+    const raw = localStorage.getItem(REPLAY_HISTORY_KEY);
+    if (!raw) return [];
+    const entries = JSON.parse(raw);
+    if (!Array.isArray(entries)) return [];
+    return entries.map(cleanReplayHistoryEntry).filter(Boolean).slice(0, REPLAY_HISTORY_MAX);
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeReplayHistoryLocal() {
+  const sessionEntries = replayHistory.slice(0, REPLAY_HISTORY_MAX);
+  let entries = sessionEntries;
+  while (entries.length) {
+    try {
+      localStorage.setItem(REPLAY_HISTORY_KEY, JSON.stringify(entries));
+      replayHistory = entries;
+      updateReplayEntryPoints();
+      if (!historyModalEl.classList.contains("hidden")) renderReplayHistory();
+      return;
+    } catch (_) {
+      entries = entries.slice(0, -1);
+    }
+  }
+  try {
+    localStorage.removeItem(REPLAY_HISTORY_KEY);
+  } catch (_) {
+    /* 保存できない環境では、そのセッション中の履歴だけ保持する */
+  }
+  replayHistory = sessionEntries;
+  updateReplayEntryPoints();
+  if (!historyModalEl.classList.contains("hidden")) renderReplayHistory();
+}
+
+function saveReplayHistory(replay) {
+  if (!isReplayData(replay) || !replay.final) return;
+  const entry = cleanReplayHistoryEntry({
+    id: replayHistoryEntryId(replay),
+    savedAt: new Date().toISOString(),
+    replay: cloneJson(replay),
+  });
+  if (!entry) return;
+  replayHistory = [entry, ...replayHistory.filter((item) => item.id !== entry.id)].slice(0, REPLAY_HISTORY_MAX);
+  writeReplayHistoryLocal();
+}
+
 function updateReplayEntryPoints() {
   lastReplayBtnEl.classList.toggle("hidden", !lastReplay);
 }
@@ -682,6 +795,7 @@ function finishReplayRecording(endedBy, isNewBest) {
     afterHash: replayBoardHash(snapshotGridData()),
   };
   saveLastReplay(currentReplay);
+  saveReplayHistory(currentReplay);
 }
 
 function cleanReplayCell(cell) {
@@ -1179,6 +1293,76 @@ async function shareReplay() {
   }
 }
 
+function formatHistoryDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(lang === "ja" ? "ja-JP" : "en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function historyMaxLabel(value) {
+  if (value >= HOLE_AT) return `${STR[lang].holeName} ${fmt(value)}`;
+  if (value >= 1 && value <= ELEMENTS.length) return `${ELEMENTS[value - 1]} ${value}`;
+  return fmt(value);
+}
+
+function renderReplayHistory() {
+  const s = STR[lang];
+  historyTitleEl.textContent = s.historyTitle;
+  historyEmptyEl.textContent = s.historyEmpty;
+  historyCloseEl.textContent = s.historyClose;
+  historyListEl.replaceChildren();
+  historyEmptyEl.classList.toggle("hidden", replayHistory.length > 0);
+
+  for (const entry of replayHistory) {
+    const replay = entry.replay;
+    const final = replay.final || {};
+    const item = document.createElement("li");
+    item.className = "history-item";
+
+    const main = document.createElement("div");
+    main.className = "history-main";
+    const scoreLine = document.createElement("div");
+    scoreLine.className = "history-score";
+    scoreLine.textContent = `${s.historyScore} ${fmt(final.score || 0)}`;
+    const metaLine = document.createElement("div");
+    metaLine.className = "history-meta";
+    const dateLabel = formatHistoryDate(entry.savedAt || replay.completedAt || replay.createdAt);
+    const metaParts = [
+      dateLabel,
+      `${final.moves ?? replay.moves.length} ${s.historyMoves}`,
+      `${s.historyMax} ${historyMaxLabel(final.maxTile || 1)}`,
+    ].filter(Boolean);
+    metaLine.textContent = metaParts.join(" · ");
+    main.append(scoreLine, metaLine);
+
+    const replayButton = document.createElement("button");
+    replayButton.className = "btn history-replay";
+    replayButton.type = "button";
+    replayButton.textContent = s.historyOpen;
+    replayButton.addEventListener("click", () => {
+      historyModalEl.classList.add("hidden");
+      startReplay(replay, "title");
+    });
+
+    item.append(main, replayButton);
+    historyListEl.appendChild(item);
+  }
+}
+
+function openReplayHistory() {
+  renderReplayHistory();
+  historyModalEl.classList.remove("hidden");
+}
+
+function closeReplayHistory() {
+  historyModalEl.classList.add("hidden");
+}
+
 // ---------- プレイ中状態の保存 ----------
 
 function cloneJson(value) {
@@ -1338,6 +1522,7 @@ function updateReplayControlsText() {
   replayDoneEl.textContent = s.replayDone;
   replaySpeedEl.setAttribute("aria-label", s.replaySpeed);
   replayStopEl.setAttribute("aria-label", s.replayStop);
+  replaySkipEl.setAttribute("aria-label", s.replaySkip);
   replaySliderEl.setAttribute("aria-label", s.replayPosition);
   replayPlayEl.textContent = replayPlaying ? "Ⅱ" : "▶";
   replayPlayEl.setAttribute("aria-label", replayPlaying ? s.replayPause : s.replayPlay);
@@ -1429,10 +1614,32 @@ function finishReplayAnimation(nextIndex) {
   }
 }
 
+function replaySpeedMultiplier() {
+  return Number(replaySpeedEl.value) || 1;
+}
+
+function shouldUseInstantReplayStep() {
+  return replaySpeedMultiplier() > 8;
+}
+
+function finishInstantReplayStep(nextIndex) {
+  renderReplayFrame(nextIndex);
+  if (!replayPlaying) return;
+  if (nextIndex >= replayFrames.length - 1) {
+    pauseReplay();
+  } else {
+    scheduleReplayTick();
+  }
+}
+
 function animateReplayStep(nextIndex) {
   if (!replayFrames.length || replayAnimating) return;
   if (nextIndex !== replayIndex + 1 || nextIndex >= replayFrames.length) {
     renderReplayFrame(nextIndex);
+    return;
+  }
+  if (shouldUseInstantReplayStep()) {
+    finishInstantReplayStep(nextIndex);
     return;
   }
 
@@ -1512,7 +1719,8 @@ function pauseReplay(cancelAnimation = false) {
 }
 
 function replayDelay() {
-  return 850 / (Number(replaySpeedEl.value) || 1);
+  if (replaySpeedMultiplier() >= 8) return 24;
+  return Math.max(24, 850 / replaySpeedMultiplier());
 }
 
 function scheduleReplayTick() {
@@ -1534,6 +1742,12 @@ function playReplay() {
 function stopReplay() {
   pauseReplay(true);
   renderReplayFrame(0);
+}
+
+function skipReplayToEnd() {
+  if (!isReplayMode || !replayFrames.length) return;
+  pauseReplay(true);
+  renderReplayFrame(replayFrames.length - 1);
 }
 
 function resetReplayMode() {
@@ -1680,20 +1894,25 @@ function refreshPtable() {
 
 let audioCtx = null;
 
+function getAudioContext() {
+  audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
 function blip(value) {
   try {
-    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === "suspended") audioCtx.resume();
-    const t = audioCtx.currentTime;
+    const ctx = getAudioContext();
+    const t = ctx.currentTime;
     const pitch = Math.min(Math.log2(value), 14);
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
     osc.type = "sine";
     osc.frequency.setValueAtTime(220 * 2 ** (pitch / 6), t);
     osc.frequency.exponentialRampToValueAtTime(330 * 2 ** (pitch / 6), t + 0.08);
     gain.gain.setValueAtTime(0.12, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-    osc.connect(gain).connect(audioCtx.destination);
+    osc.connect(gain).connect(ctx.destination);
     osc.start(t);
     osc.stop(t + 0.2);
   } catch (_) {
@@ -1701,19 +1920,93 @@ function blip(value) {
   }
 }
 
+function cueImpactConfirm(kind) {
+  try {
+    const ctx = getAudioContext();
+    const t = ctx.currentTime;
+    const isHole = kind === "hole";
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = isHole ? "triangle" : "sine";
+    osc.frequency.setValueAtTime(isHole ? 176 : 392, t);
+    osc.frequency.exponentialRampToValueAtTime(isHole ? 118 : 659, t + 0.12);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.085, t + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.22);
+  } catch (_) {
+    /* 音が出せない環境では黙って続行 */
+  }
+}
+
 // ---------- メインの操作 ----------
 
-function onTap(tile) {
-  if (isReplayMode || busy || overlayEl.classList.contains("hidden") === false) return;
-  if (grid[tile.r][tile.c] !== tile) return;
+function impactConfirmKind(tile) {
+  if (!tile) return null;
+  const tier = tierOf(tile);
+  return tier === "nova" || tier === "hole" ? tier : null;
+}
 
-  const group = findGroup(tile);
-  if (group.length < 2) {
-    tile.el.classList.add("shake");
-    setTimeout(() => tile.el.classList.remove("shake"), 320);
-    return;
+function isImpactConfirmOpen() {
+  return !impactModalEl.classList.contains("hidden");
+}
+
+function updateImpactConfirmText(kind = impactConfirmKind(pendingImpactTile) || "nova") {
+  const s = STR[lang];
+  const isHole = kind === "hole";
+  impactTitleEl.textContent = isHole ? s.impactTitleHole : s.impactTitleNova;
+  impactTextEl.textContent = isHole ? s.impactTextHole : s.impactTextNova;
+  impactYesEl.textContent = isHole ? s.impactYesHole : s.impactYesNova;
+  impactNoEl.textContent = s.impactNo;
+}
+
+function clearImpactHighlight() {
+  for (const tile of pendingImpactGroup) {
+    tile.el.classList.remove("impact-pending", "impact-anchor");
   }
+  boardEl.querySelectorAll(".impact-reticle").forEach((el) => el.remove());
+  pendingImpactGroup = [];
+}
 
+function markImpactHighlight(tile) {
+  clearImpactHighlight();
+  pendingImpactGroup = findGroup(tile);
+  for (const groupTile of pendingImpactGroup) groupTile.el.classList.add("impact-pending");
+  tile.el.classList.add("impact-anchor");
+  const reticle = document.createElement("span");
+  reticle.className = "impact-reticle";
+  reticle.setAttribute("aria-hidden", "true");
+  tile.coreEl.appendChild(reticle);
+}
+
+function showImpactConfirm(tile) {
+  const kind = impactConfirmKind(tile);
+  pendingImpactTile = tile;
+  markImpactHighlight(tile);
+  updateImpactConfirmText(kind);
+  impactModalEl.classList.remove("hidden");
+  cueImpactConfirm(kind);
+}
+
+function hideImpactConfirm() {
+  clearImpactHighlight();
+  pendingImpactTile = null;
+  impactModalEl.classList.add("hidden");
+}
+
+function confirmImpactMerge() {
+  const tile = pendingImpactTile;
+  hideImpactConfirm();
+  if (!tile || isReplayMode || busy || overlayEl.classList.contains("hidden") === false) return;
+  if (grid[tile.r]?.[tile.c] !== tile || !impactConfirmKind(tile)) return;
+  const group = findGroup(tile);
+  if (group.length < 2) return;
+  mergeTileGroup(tile, group);
+}
+
+function mergeTileGroup(tile, group) {
   busy = true;
   const oldTier = tierOf(tile);
   const total = group.reduce((sum, t) => sum + t.value, 0);
@@ -1768,6 +2061,25 @@ function onTap(tile) {
       }, 280);
     }, 60);
   }, 170);
+}
+
+function onTap(tile) {
+  if (isReplayMode || busy || isImpactConfirmOpen() || overlayEl.classList.contains("hidden") === false) return;
+  if (grid[tile.r][tile.c] !== tile) return;
+
+  const group = findGroup(tile);
+  if (group.length < 2) {
+    tile.el.classList.add("shake");
+    setTimeout(() => tile.el.classList.remove("shake"), 320);
+    return;
+  }
+
+  if (impactConfirmKind(tile)) {
+    showImpactConfirm(tile);
+    return;
+  }
+
+  mergeTileGroup(tile, group);
 }
 
 function applyGravityAndRefill() {
@@ -1882,6 +2194,7 @@ replayPlayEl.addEventListener("click", () => {
   if (replayPlaying) pauseReplay();
   else playReplay();
 });
+replaySkipEl.addEventListener("click", skipReplayToEnd);
 replaySliderEl.addEventListener("input", () => {
   renderReplayFrame(Number(replaySliderEl.value));
   if (replayPlaying) scheduleReplayTick();
@@ -1895,6 +2208,7 @@ replaySpeedEl.addEventListener("change", () => {
 const titleScreen = document.getElementById("title-screen");
 const helpModal = document.getElementById("help-modal");
 lastReplay = loadReplayLocal();
+replayHistory = loadReplayHistoryLocal();
 updateReplayEntryPoints();
 
 document.getElementById("play-btn").addEventListener("click", () => {
@@ -1905,6 +2219,7 @@ lastReplayBtnEl.addEventListener("click", () => {
   const replay = getLastReplay();
   if (replay) startReplay(replay, "title");
 });
+historyBtnEl.addEventListener("click", openReplayHistory);
 document.getElementById("howto-btn").addEventListener("click", () => {
   helpModal.classList.remove("hidden");
 });
@@ -1922,6 +2237,10 @@ document.getElementById("help-close").addEventListener("click", () => {
 // カードの外側をタップしても閉じる
 helpModal.addEventListener("click", (e) => {
   if (e.target === helpModal) helpModal.classList.add("hidden");
+});
+historyCloseEl.addEventListener("click", closeReplayHistory);
+historyModalEl.addEventListener("click", (e) => {
+  if (e.target === historyModalEl) closeReplayHistory();
 });
 
 // 戻るボタン → 確認モーダル → ホーム(タイトル)へ。ゲームはリセットされる
@@ -1941,6 +2260,12 @@ document.getElementById("back-yes").addEventListener("click", () => {
   newGame({ saveInitialState: false });
   titleScreen.classList.remove("gone");
   clearGameState();
+});
+
+impactYesEl.addEventListener("click", confirmImpactMerge);
+impactNoEl.addEventListener("click", hideImpactConfirm);
+impactModalEl.addEventListener("click", (e) => {
+  if (e.target === impactModalEl) hideImpactConfirm();
 });
 
 // ---------- 言語の適用と切替 ----------
@@ -1965,6 +2290,10 @@ function applyLang() {
   setText("back-text", s.backText);
   setText("back-yes", s.backYes);
   setText("back-no", s.backNo);
+  setText("impact-title", s.impactTitleNova);
+  setText("impact-text", s.impactTextNova);
+  setText("impact-yes", s.impactYesNova);
+  setText("impact-no", s.impactNo);
   setText("pt-label", s.ptLabel);
   setText("pt-hole", s.ptHole);
   setText("lang-btn", s.langBtn);
@@ -1974,9 +2303,12 @@ function applyLang() {
   setText("replay-btn", s.replay);
   setText("share-replay-btn", s.shareReplay);
   setText("last-replay-btn", s.lastReplay);
+  setText("history-btn", s.history);
   for (const id of ["hs1", "hs2", "hs3", "hs4", "hs5"]) {
     document.getElementById(id).innerHTML = s[id];
   }
+  if (isImpactConfirmOpen()) updateImpactConfirmText();
+  if (!historyModalEl.classList.contains("hidden")) renderReplayHistory();
   updateReplayControlsText();
   // タイル上の元素名と周期表のツールチップも切り替える
   if (grid) {
