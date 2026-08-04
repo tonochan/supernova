@@ -191,24 +191,18 @@ body.replay-active .hint {
     0 0 0 2px rgba(244, 201, 93, 0.22),
     0 0 18px rgba(255, 238, 174, 0.54);
 }
-.tile.impact-anchor .face {
-  outline-color: var(--gold);
-  box-shadow:
-    inset 0 -4px 0 rgba(0, 0, 0, 0.16),
-    0 0 0 3px rgba(244, 201, 93, 0.38),
-    0 0 24px rgba(255, 238, 174, 0.74);
-}
 .impact-reticle {
   position: absolute;
   left: 50%;
   top: 50%;
   width: 76%;
   aspect-ratio: 1;
-  border: 2px solid rgba(244, 201, 93, 0.92);
+  border: 2px solid rgba(255, 76, 96, 0.98);
   border-radius: 50%;
   box-shadow:
-    0 0 0 5px rgba(244, 201, 93, 0.13),
-    0 0 18px rgba(255, 238, 174, 0.68);
+    0 0 0 5px rgba(255, 76, 96, 0.16),
+    0 0 16px rgba(255, 58, 86, 0.82),
+    0 0 30px rgba(255, 42, 72, 0.46);
   pointer-events: none;
   z-index: 6;
   animation: impact-lock-ring 1s ease-in-out infinite;
@@ -217,8 +211,8 @@ body.replay-active .hint {
 .impact-reticle::after {
   content: "";
   position: absolute;
-  background: rgba(255, 246, 214, 0.88);
-  filter: drop-shadow(0 0 6px rgba(244, 201, 93, 0.82));
+  background: rgba(255, 94, 112, 0.96);
+  filter: drop-shadow(0 0 7px rgba(255, 45, 76, 0.96));
   animation: impact-lock-line 1s ease-in-out infinite;
 }
 .impact-reticle::before {
@@ -365,6 +359,14 @@ body.replay-active .hint {
   box-shadow:
     inset 0 0 10px rgba(255, 165, 90, 0.35),
     0 0 16px rgba(255, 150, 80, 0.7);
+}
+.tile.impact-anchor .face {
+  outline-color: rgba(255, 76, 96, 0.96);
+  box-shadow:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.16),
+    0 0 0 3px rgba(255, 76, 96, 0.42),
+    0 0 20px rgba(255, 63, 86, 0.7),
+    0 0 34px rgba(255, 42, 72, 0.36);
 }
 
 /* 融合すると次の段階(超新星/ブラックホール)に進むグループは
