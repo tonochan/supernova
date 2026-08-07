@@ -78,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-04 11:32 JST";
+const BUILD_VERSION = "2026-08-08 00:53 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -142,8 +142,11 @@ const STR = {
     replayHint: "Replay mode",
     replayGuide: "Paused: tap the board to step forward",
     shareTitle: "SUPERNOVA replay",
-    shareText: "Watch my SUPERNOVA replay",
-    shareCopied: "Replay link copied",
+    shareText: (score) => `I scored ${score} points in SUPERNOVA!`,
+    shareMax: (max) => `Max element: ${max}`,
+    shareMoves: (moves) => `Moves: ${moves}`,
+    shareUrl: (url) => `Replay: ${url}`,
+    shareCopied: "Replay text copied",
     shareFailed: "Replay could not be shared",
     sharedReplay: "Shared replay",
     toastNew: (z, s, n) => `✦ New element! ${z} ${s} — ${n}`,
@@ -207,8 +210,11 @@ const STR = {
     replayHint: "リプレイ中",
     replayGuide: "停止中は盤面タップで1手すすむ",
     shareTitle: "SUPERNOVA リプレイ",
-    shareText: "SUPERNOVAのリプレイ",
-    shareCopied: "リプレイリンクをコピーしました",
+    shareText: (score) => `SUPERNOVAで ${score} 点!`,
+    shareMax: (max) => `最大元素: ${max}`,
+    shareMoves: (moves) => `手数: ${moves}`,
+    shareUrl: (url) => `リプレイ: ${url}`,
+    shareCopied: "リプレイ情報をコピーしました",
     shareFailed: "リプレイを共有できませんでした",
     sharedReplay: "共有リプレイ",
     toastNew: (z, s, n) => `✦ 新元素はっけん! ${z} ${s} — ${n}`,
@@ -299,6 +305,11 @@ function fmt(v) {
   if (v >= 1e6) return (v / 1e6 >= 10 ? Math.round(v / 1e6) : (v / 1e6).toFixed(1)) + "M";
   if (v >= 1e4) return (v / 1e3 >= 100 ? Math.round(v / 1e3) : (v / 1e3).toFixed(1).replace(/\.0$/, "")) + "k";
   return String(v);
+}
+
+function fmtShareNumber(v) {
+  const n = Math.max(0, Math.floor(Number(v) || 0));
+  return n.toLocaleString(lang === "ja" ? "ja-JP" : "en-US");
 }
 
 // 星屑の成長度 0..1(H=0、Fe直前=1)
@@ -1198,6 +1209,24 @@ function replayShareSummary(replay) {
   };
 }
 
+function shareMaxTileLabel(value) {
+  if (value >= HOLE_AT) return `${STR[lang].holeName} (${fmtShareNumber(value)})`;
+  const z = Math.max(1, Math.min(Math.floor(value) || 1, ELEMENTS.length));
+  return `${ELEMENTS[z - 1]} (${fmtShareNumber(z)})`;
+}
+
+function replayShareText(replay, url, includeUrl = false) {
+  const s = STR[lang];
+  const summary = replayShareSummary(replay);
+  const lines = [
+    s.shareText(fmtShareNumber(summary.score)),
+    s.shareMax(shareMaxTileLabel(summary.maxTile || 1)),
+    s.shareMoves(fmtShareNumber(summary.moves)),
+  ];
+  if (includeUrl) lines.push(s.shareUrl(url));
+  return lines.join("\n");
+}
+
 async function saveReplayShareToServer(replay) {
   const payload = encodeReplayShare(replay);
   const response = await fetch(`${replayShareApiBase()}/replays`, {
@@ -1271,7 +1300,7 @@ async function shareReplay() {
     return;
   }
 
-  const data = { title: STR[lang].shareTitle, text: STR[lang].shareText, url };
+  const data = { title: STR[lang].shareTitle, text: replayShareText(replay, url), url };
   if (navigator.share) {
     try {
       await navigator.share(data);
@@ -1282,9 +1311,10 @@ async function shareReplay() {
   }
 
   try {
+    const text = replayShareText(replay, url, true);
     if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(url);
-    } else if (!copyTextFallback(url)) {
+      await navigator.clipboard.writeText(text);
+    } else if (!copyTextFallback(text)) {
       throw new Error("Clipboard failed");
     }
     toast(STR[lang].shareCopied);
