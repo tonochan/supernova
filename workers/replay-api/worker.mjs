@@ -522,6 +522,32 @@ function tileStrokeColor(cell) {
   return "rgba(255,255,255,0.42)";
 }
 
+function tileGlow(cell) {
+  if (!cell || cell.value >= HOLE_AT || cell.value >= NOVA_AT) {
+    return { opacity: 0.18, radius: 32, color: "#ffffff" };
+  }
+  const t = growthT(cell);
+  return {
+    opacity: 0.12 + 0.68 * t,
+    radius: 16 + 36 * t,
+    color: "#ffffff",
+  };
+}
+
+function tileRing(cell) {
+  if (!cell || cell.value >= HOLE_AT) return "";
+  const radius = 25;
+  const circumference = 2 * Math.PI * radius;
+  const progress =
+    cell.value >= NOVA_AT ? Math.min(cell.value / 118, 1) : Math.min(cell.value / NOVA_AT, 1);
+  const dash = (circumference * progress).toFixed(2);
+  const gap = (circumference - circumference * progress).toFixed(2);
+  const ringColor = cell.value >= NOVA_AT ? "rgba(201,147,31,0.86)" : "rgba(255,255,255,0.82)";
+  const trackColor = cell.value >= NOVA_AT ? "rgba(28,35,64,0.12)" : "rgba(255,255,255,0.2)";
+  return `<circle cx="42" cy="42" r="${radius}" fill="none" stroke="${trackColor}" stroke-width="3.5"/>
+<circle cx="42" cy="42" r="${radius}" fill="none" stroke="${ringColor}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${dash} ${gap}" transform="rotate(-90 42 42)"/>`;
+}
+
 function tileSymbol(cell) {
   if (!cell) return "";
   if (cell.value >= HOLE_AT) return formatNumber(cell.value);
@@ -541,10 +567,19 @@ function renderSvgTile(cell, r, c) {
   const fill = tileFill(cell);
   const textColor = tileTextColor(cell);
   const stroke = tileStrokeColor(cell);
+  const glow = tileGlow(cell);
+  const ring = tileRing(cell);
+  const textShadow = cell?.value >= HOLE_AT ? "filter=\"url(#textGlow)\"" : "";
   return `<g transform="translate(${x} ${y})">
-<rect width="${cellSize}" height="${cellSize}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="3"/>
+<g filter="url(#tileShadow)">
+<rect width="${cellSize}" height="${cellSize}" rx="13" fill="${fill}" stroke="${stroke}" stroke-width="2.5"/>
+<circle cx="42" cy="31" r="${glow.radius.toFixed(1)}" fill="${glow.color}" opacity="${glow.opacity.toFixed(2)}"/>
+<rect x="4" y="4" width="76" height="34" rx="10" fill="#ffffff" opacity="${cell?.value >= HOLE_AT ? "0.05" : "0.18"}"/>
+<rect x="4" y="64" width="76" height="16" rx="8" fill="#000000" opacity="${cell?.value >= HOLE_AT ? "0.22" : "0.14"}"/>
+</g>
+${ring}
 ${mass ? `<text x="12" y="21" fill="${textColor}" opacity="0.72" font-size="16" font-weight="700">${escapeXml(mass)}</text>` : ""}
-<text x="${cellSize / 2}" y="${cellSize / 2 + symbolSize * 0.33}" text-anchor="middle" fill="${textColor}" font-size="${symbolSize}" font-weight="800">${escapeXml(symbol)}</text>
+<text x="${cellSize / 2}" y="${cellSize / 2 + symbolSize * 0.33}" text-anchor="middle" fill="${textColor}" font-size="${symbolSize}" font-weight="800" ${textShadow}>${escapeXml(symbol)}</text>
 </g>`;
 }
 
@@ -572,6 +607,12 @@ function replayOgpSvg(model) {
 <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
 <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#03050c" flood-opacity="0.35"/>
 </filter>
+<filter id="tileShadow" x="-20%" y="-20%" width="140%" height="145%">
+<feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#02040c" flood-opacity="0.45"/>
+</filter>
+<filter id="textGlow" x="-30%" y="-30%" width="160%" height="160%">
+<feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#a987ff" flood-opacity="0.75"/>
+</filter>
 </defs>
 <rect width="1200" height="630" fill="url(#bg)"/>
 <rect x="48" y="48" width="1104" height="534" rx="28" fill="#151b2f" stroke="rgba(255,255,255,0.16)" filter="url(#shadow)"/>
@@ -585,7 +626,6 @@ function replayOgpSvg(model) {
 <text x="84" y="540" fill="#8793b5" font-size="22" font-weight="650" font-family="system-ui, sans-serif">${escapeXml(decodeNote)}</text>
 <rect x="638" y="55" width="516" height="522" rx="26" fill="#0f1426" stroke="rgba(255,255,255,0.14)"/>
 ${renderBoardTiles(model.board)}
-<text x="665" y="560" fill="#8994b6" font-size="18" font-weight="700" font-family="system-ui, sans-serif">${escapeXml(title)}</text>
 </svg>`;
 }
 
