@@ -78,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-12 20:58 JST";
+const BUILD_VERSION = "2026-08-13 00:44 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -1142,6 +1142,10 @@ function replayShareApiBase() {
   return REPLAY_SHARE_API_BASE;
 }
 
+function replaySharePageBase() {
+  return replayShareApiBase().replace(/\/v1\/?$/, "");
+}
+
 function isInlineReplaySharePayload(payload) {
   return (
     typeof payload === "string" &&
@@ -1179,11 +1183,7 @@ function sharedReplayRefFromLocation() {
 }
 
 function replayShareUrlForServerId(id) {
-  const url = new URL(window.location.href);
-  url.search = "";
-  url.hash = "";
-  url.searchParams.set(REPLAY_SHARE_QUERY_KEY, `${REPLAY_SHARE_SERVER_PREFIX}${id}`);
-  return url.toString();
+  return `${replaySharePageBase()}/r/${encodeURIComponent(id)}`;
 }
 
 function clearReplayShareLocation() {
