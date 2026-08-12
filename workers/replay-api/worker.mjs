@@ -448,6 +448,7 @@ function replayLandingHtml(model, urls) {
 <meta property="og:url" content="${escapeHtml(urls.shareUrl)}">
 <meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:image" content="${escapeHtml(urls.imageUrl)}">
+<meta property="og:image:secure_url" content="${escapeHtml(urls.imageUrl)}">
 <meta property="og:image:type" content="image/svg+xml">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
