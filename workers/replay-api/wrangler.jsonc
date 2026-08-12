@@ -17,5 +17,21 @@
       "binding": "REPLAYS",
       "id": "1a2dd798946945ffb01d118c73383dae"
     }
-  ]
+  ],
+  "env": {
+    "beta": {
+      "name": "supernova-replay-api-ogp-beta",
+      "vars": {
+        "ALLOWED_ORIGINS": "https://tonochan.github.io,http://localhost:8420,http://127.0.0.1:8420",
+        "MAX_PAYLOAD_CHARS": "262144",
+        "GAME_BASE_URL": "https://tonochan.github.io/supernova/beta/"
+      },
+      "kv_namespaces": [
+        {
+          "binding": "REPLAYS",
+          "id": "1a2dd798946945ffb01d118c73383dae"
+        }
+      ]
+    }
+  }
 }

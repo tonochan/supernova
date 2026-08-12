@@ -672,7 +672,7 @@ async function handleGetReplayLanding(request, env, id) {
   const shareUrl = new URL(request.url).toString();
   const gameUrl = replayGameUrl(env, id);
   const imageUrl = absoluteUrl(request, `/r/${id}/og.svg`);
-  return htmlResponse(replayLandingHtml(replayModel(record), { shareUrl, gameUrl, imageUrl }), 200, {
+  return htmlResponse(replayLandingHtml(replayModel(record, true), { shareUrl, gameUrl, imageUrl }), 200, {
     "Cache-Control": "public, max-age=300",
   });
 }

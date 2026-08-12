@@ -27,6 +27,7 @@ const REPLAY_SHARE_LEGACY_PREFIXES = ["snr1."];
 const REPLAY_SHARE_SERVER_PREFIX = "srv1";
 const REPLAY_SHARE_SERVER_ID_RE = /^[A-Za-z0-9_-]{16}$/;
 const REPLAY_SHARE_API_BASE = "https://supernova-replay-api.tonosaki-shuntaro.workers.dev/v1";
+const REPLAY_SHARE_BETA_API_BASE = "https://supernova-replay-api-ogp-beta.tonosaki-shuntaro.workers.dev/v1";
 const REPLAY_SHARE_LOCAL_API_BASE = "http://127.0.0.1:8787/v1";
 const RULES_VERSION = 1;
 
@@ -78,7 +79,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-11 23:54 JST";
+const BUILD_VERSION = "2026-08-12 10:12 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -1139,6 +1140,7 @@ function decodeReplayShare(payload) {
 function replayShareApiBase() {
   const host = window.location.hostname;
   if (host === "localhost" || host === "127.0.0.1") return REPLAY_SHARE_LOCAL_API_BASE;
+  if (window.location.pathname.startsWith("/supernova/beta/")) return REPLAY_SHARE_BETA_API_BASE;
   return REPLAY_SHARE_API_BASE;
 }
 
