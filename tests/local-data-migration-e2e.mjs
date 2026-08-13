@@ -244,9 +244,9 @@ function sampleGameState(score, savedAt) {
   };
 }
 
-async function seedOldStorage(debuggingPort, bridgeOrigin, appOrigin, values) {
+async function seedOldStorage(debuggingPort, bridgeOrigin, bridgeUrl, values) {
   const page = await newCdpPage(debuggingPort);
-  await page.navigate(`${bridgeOrigin}/migrate/?targetOrigin=${encodeURIComponent(appOrigin)}`);
+  await page.navigate(bridgeUrl);
   await page.evaluate(`
     (() => {
       const values = ${JSON.stringify(values)};
@@ -258,10 +258,13 @@ async function seedOldStorage(debuggingPort, bridgeOrigin, appOrigin, values) {
   page.close();
 }
 
-async function createAppPage(debuggingPort, bridgeOrigin, appOrigin, setupStorage = {}) {
+async function createAppPage(debuggingPort, bridgeOrigin, appOrigin, bridgeUrl, setupStorage = {}) {
   const page = await newCdpPage(debuggingPort);
+  const overrideBridge = bridgeUrl !== null && bridgeUrl !== undefined
+    ? `window.__SUPERNOVA_MIGRATION_BRIDGE_URL = ${JSON.stringify(bridgeUrl)};`
+    : "";
   await page.addInitScript(`
-    window.__SUPERNOVA_MIGRATION_BRIDGE_URL = ${JSON.stringify(`${bridgeOrigin}/migrate/?targetOrigin=${encodeURIComponent(appOrigin)}`)};
+    ${overrideBridge}
     window.__SUPERNOVA_MIGRATION_SOURCE_ORIGIN = ${JSON.stringify(bridgeOrigin)};
     window.__SUPERNOVA_MIGRATION_TARGET_ORIGIN = ${JSON.stringify(appOrigin)};
     for (const [key, value] of Object.entries(${JSON.stringify(setupStorage)})) {
@@ -280,8 +283,8 @@ async function runImport(page) {
   `);
 }
 
-async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin) {
-  await seedOldStorage(debuggingPort, bridgeOrigin, appOrigin, {
+async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin, seedBridgeUrl, appBridgeUrl = seedBridgeUrl) {
+  await seedOldStorage(debuggingPort, bridgeOrigin, seedBridgeUrl, {
     "supernova-best": "9999",
     "supernova-found": JSON.stringify([1, 79]),
     "supernova-last-replay": JSON.stringify(sampleReplay(777)),
@@ -292,7 +295,7 @@ async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin) {
     "supernova-lang": "ja",
   });
 
-  const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin, {
+  const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin, appBridgeUrl, {
     "supernova-best": "12000",
     "supernova-found": JSON.stringify([1, 2]),
   });
@@ -320,16 +323,16 @@ async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin) {
   page.close();
 }
 
-async function testNoData(debuggingPort, bridgeOrigin, appOrigin) {
-  await seedOldStorage(debuggingPort, bridgeOrigin, appOrigin, {});
-  const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin);
+async function testNoData(debuggingPort, bridgeOrigin, appOrigin, seedBridgeUrl, appBridgeUrl = seedBridgeUrl) {
+  await seedOldStorage(debuggingPort, bridgeOrigin, seedBridgeUrl, {});
+  const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin, appBridgeUrl);
   await runImport(page);
   await page.waitFor(`/No old saved data|見つかりません/.test(document.querySelector('#migration-status')?.textContent || '')`);
   page.close();
 }
 
-async function testPopupBlocked(debuggingPort, bridgeOrigin, appOrigin) {
-  const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin);
+async function testPopupBlocked(debuggingPort, bridgeOrigin, appOrigin, appBridgeUrl) {
+  const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin, appBridgeUrl);
   await page.evaluate("window.open = () => null");
   await runImport(page);
   await page.waitFor(`/could not open|開けません/.test(document.querySelector('#migration-status')?.textContent || '')`, 3000);
@@ -337,16 +340,39 @@ async function testPopupBlocked(debuggingPort, bridgeOrigin, appOrigin) {
 }
 
 async function main() {
+  if (process.argv.includes("--production")) {
+    const debuggingPort = await startChrome();
+    try {
+      await testImportMerge(
+        debuggingPort,
+        "https://tonochan.github.io",
+        "https://supernova.tonochan.jp",
+        `https://tonochan.github.io/supernova/migrate/?v=${Date.now()}`,
+        null
+      );
+      console.log("production local data migration E2E passed");
+    } finally {
+      await new Promise((resolve) => {
+        chrome.once("exit", resolve);
+        chrome.kill();
+        setTimeout(resolve, 1000);
+      });
+      await fs.rm(userDataDir, { recursive: true, force: true });
+    }
+    return;
+  }
+
   const app = await startStaticServer(repoRoot);
   const bridge = await startStaticServer(compatRoot);
   appServer = app.server;
   bridgeServer = bridge.server;
   const debuggingPort = await startChrome();
+  const bridgeUrl = `${bridge.origin}/migrate/?targetOrigin=${encodeURIComponent(app.origin)}`;
 
   try {
-    await testImportMerge(debuggingPort, bridge.origin, app.origin);
-    await testNoData(debuggingPort, bridge.origin, app.origin);
-    await testPopupBlocked(debuggingPort, bridge.origin, app.origin);
+    await testImportMerge(debuggingPort, bridge.origin, app.origin, bridgeUrl);
+    await testNoData(debuggingPort, bridge.origin, app.origin, bridgeUrl);
+    await testPopupBlocked(debuggingPort, bridge.origin, app.origin, bridgeUrl);
     console.log("local data migration E2E passed");
   } finally {
     appServer.close();
