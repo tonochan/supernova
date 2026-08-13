@@ -2,6 +2,10 @@
 
 Date: 2026-08-13
 
+Related architecture note:
+
+- `docs/replay-ogp-no-static-html-architecture.md` covers whether GitHub Pages can avoid per-replay HTML entirely, and why a custom-domain Worker is the recommended production path if JavaScript-only OGP is not enough.
+
 ## Current Fact Pattern
 
 - Production share URL: `https://supernova-replay-api.tonosaki-shuntaro.workers.dev/r/:id`
