@@ -4,7 +4,7 @@ name: Deploy to GitHub Pages
 # 配信の実体は gh-pages ブランチ(Pagesの配信元に設定)。
 on:
   push:
-    branches: [beta]
+    branches: [main, beta]
 
 permissions:
   contents: write
