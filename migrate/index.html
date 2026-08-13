@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#141a33">
+<title>SUPERNOVA data transfer</title>
+<style>
+html,body{margin:0;min-height:100%;background:#101524;color:#f7f8ff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{display:grid;place-items:center}
+main{width:min(420px,calc(100% - 40px));text-align:center}
+h1{font-size:28px;margin:0 0 14px}
+p{color:#cfd6e8;line-height:1.6;margin:0 0 18px}
+button{border:0;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;padding:12px 18px}
+.muted{font-size:13px;color:#9ea9c8}
+.error{color:#ffb2a0;font-weight:700}
+</style>
+</head>
+<body>
+<main>
+<h1>SUPERNOVA data transfer</h1>
+<p id="status">Preparing saved data...</p>
+<button id="retry" type="button">Try again</button>
+<p class="muted">This page only reads SUPERNOVA data saved in this browser on the old GitHub Pages address.</p>
+</main>
+<script>
+(function () {
+  "use strict";
+
+  var KIND = "supernova-local-data-migration";
+  var ACK_KIND = "supernova-local-data-migration-ack";
+  var SCHEMA_VERSION = 1;
+  var DEFAULT_TARGET_ORIGIN = "https://supernova.tonochan.jp";
+  var MAX_CHARS = 5000000;
+  var ALLOWED_KEYS = [
+    "supernova-best",
+    "supernova-found",
+    "supernova-game-state",
+    "supernova-last-replay",
+    "supernova-replay-history",
+    "supernova-lang"
+  ];
+
+  var statusEl = document.getElementById("status");
+  var retryEl = document.getElementById("retry");
+  var targetOrigin = resolveTargetOrigin();
+  var finished = false;
+  var attempts = 0;
+
+  function resolveTargetOrigin() {
+    var fallback = DEFAULT_TARGET_ORIGIN;
+    var params = new URLSearchParams(window.location.search);
+    var requested = params.get("targetOrigin");
+    if (!requested || !isLocalHost(window.location.hostname)) return fallback;
+    try {
+      var url = new URL(requested);
+      if ((url.hostname === "127.0.0.1" || url.hostname === "localhost") && /^https?:$/.test(url.protocol)) {
+        return url.origin;
+      }
+    } catch (_) {
+      return fallback;
+    }
+    return fallback;
+  }
+
+  function isLocalHost(hostname) {
+    return hostname === "127.0.0.1" || hostname === "localhost";
+  }
+
+  function setStatus(text, isError) {
+    statusEl.textContent = text;
+    statusEl.className = isError ? "error" : "";
+  }
+
+  function collectKeys() {
+    var keys = {};
+    for (var i = 0; i < ALLOWED_KEYS.length; i++) {
+      var key = ALLOWED_KEYS[i];
+      var value = localStorage.getItem(key);
+      if (value === null) continue;
+      if (typeof value !== "string" || value.length > MAX_CHARS) {
+        return { error: "payload_too_large", keys: {} };
+      }
+      keys[key] = value;
+    }
+    return { keys: keys };
+  }
+
+  function postSavedData() {
+    if (finished) return;
+    if (!window.opener || window.opener.closed) {
+      setStatus("Open this window from the new SUPERNOVA site to transfer saved data.", true);
+      return;
+    }
+
+    var collected = collectKeys();
+    var payload = {
+      kind: KIND,
+      schemaVersion: SCHEMA_VERSION,
+      sourceOrigin: window.location.origin,
+      targetOrigin: targetOrigin,
+      createdAt: new Date().toISOString(),
+      keys: collected.keys
+    };
+    if (collected.error) payload.error = collected.error;
+
+    var size = JSON.stringify(payload).length;
+    if (size > MAX_CHARS) {
+      payload = {
+        kind: KIND,
+        schemaVersion: SCHEMA_VERSION,
+        sourceOrigin: window.location.origin,
+        targetOrigin: targetOrigin,
+        createdAt: new Date().toISOString(),
+        error: "payload_too_large",
+        keys: {}
+      };
+    }
+
+    window.opener.postMessage(payload, targetOrigin);
+    attempts += 1;
+    setStatus(Object.keys(payload.keys).length ? "Sending saved data..." : "No old saved data was found.");
+    if (attempts < 6) setTimeout(postSavedData, 650);
+  }
+
+  window.addEventListener("message", function (event) {
+    if (event.origin !== targetOrigin) return;
+    var data = event.data || {};
+    if (data.kind !== ACK_KIND || data.schemaVersion !== SCHEMA_VERSION) return;
+    finished = true;
+    if (data.status === "ok") {
+      setStatus("Done. You can return to SUPERNOVA.");
+      setTimeout(function () {
+        try {
+          window.close();
+        } catch (_) {
+          /* noop */
+        }
+      }, 900);
+    } else {
+      setStatus("The new SUPERNOVA site could not import this data.", true);
+    }
+  });
+
+  retryEl.addEventListener("click", function () {
+    finished = false;
+    attempts = 0;
+    postSavedData();
+  });
+
+  postSavedData();
+})();
+</script>
+</body>
+</html>
