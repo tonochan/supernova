@@ -21,7 +21,31 @@ References checked:
 
 ## Options
 
-### A. Keep Worker share URL, change dynamic image to PNG or JPEG
+### A. GitHub Pages share page with cross-origin PNG image
+
+Shape:
+
+- Share URL becomes `https://tonochan.github.io/supernova/static-replays-hybrid/:id/`.
+- GitHub Pages stores only replay-specific `index.html`.
+- `og:image` is an absolute HTTPS URL on another origin, for example Worker, R2/CDN, or a pinned raw GitHub image URL.
+- Browser users are redirected to `https://tonochan.github.io/supernova/?replay=srv1<id>`.
+
+Pros:
+
+- Keeps the visible share URL on `tonochan.github.io`.
+- Avoids storing a PNG file on GitHub Pages for every replay.
+- Uses the same crawler-friendly static HTML mechanism as the confirmed-good PNG preview.
+- Allows image generation/storage to move to a Worker/CDN system optimized for binary assets.
+
+Cons:
+
+- GitHub Pages still needs a real per-replay `index.html`; a shared `?replay=srv1...` page cannot emit different OGP for each replay without JavaScript, and crawlers should not be relied on to run game JavaScript.
+- The image origin must return a direct `200` over HTTPS with a correct image `Content-Type` such as `image/png` or `image/jpeg`.
+- If the image origin is down, blocked, slow, or returns SVG/HTML/error content, the share card may show text without an image. The fallback should be a default static PNG or a durable cached PNG.
+
+Recommendation if Tono wants `tonochan.github.io` as the shared URL: best compromise. It still needs an HTML publisher, but it removes per-replay PNG storage from Pages.
+
+### B. Keep Worker share URL, change dynamic image to PNG or JPEG
 
 Shape:
 
@@ -42,7 +66,7 @@ Cons:
 
 Recommendation if image reliability is the only blocker: best production path.
 
-### B. GitHub Pages pre-generated replay pages
+### C. GitHub Pages pre-generated replay pages
 
 Shape:
 
@@ -69,7 +93,7 @@ Recommendation if `tonochan.github.io` is mandatory: viable, but not the smalles
 
 This is the only option that keeps the visible share URL on `tonochan.github.io` for every replay. The important constraint is that every replay URL must exist as a real static file before it is shared. Query-string URLs such as `https://tonochan.github.io/supernova/?replay=srv1...` cannot have replay-specific OGP on GitHub Pages because the HTML file is the same for every query string and crawlers do not depend on the game JavaScript to generate meta tags.
 
-### C. Custom domain routed to Worker
+### D. Custom domain routed to Worker
 
 Shape:
 
@@ -90,6 +114,31 @@ Cons:
 
 Recommendation if Tono can accept not using `tonochan.github.io`: best long-term shape.
 
+## CORS And Crawler Conditions
+
+- OGP crawlers fetch the HTML and then fetch the absolute `og:image` URL as normal HTTP resources.
+- CORS is mainly a browser JavaScript/read-access control. It is not the core requirement for an OGP crawler to download an image, but permissive CORS does not hurt and is useful for diagnostics.
+- Required in practice:
+  - absolute HTTPS image URL
+  - direct `200` response, ideally no redirects
+  - `Content-Type: image/png` or `image/jpeg`
+  - reasonable `Cache-Control`
+  - no auth, cookies, hotlink protection, bot block, or `robots.txt` rule that blocks the crawler
+  - stable dimensions, here `1200x630`
+
+The local prototype verifies the hybrid page shape. The raw GitHub image used in the prototype returns `Content-Type: image/png`, `Access-Control-Allow-Origin: *`, and `Cross-Origin-Resource-Policy: cross-origin`. Those CORS headers are not the reason OGP works, but they show the image is publicly readable from another origin.
+
+## Storage, Publisher, And Fallback Comparison
+
+| Approach | Pages storage per replay | Required publisher | Share preview latency | Image fallback |
+| --- | ---: | --- | --- | --- |
+| Pages HTML + Pages PNG | HTML + about 100 KB PNG | GitHub/Actions writer | Wait for Pages deploy | Static default PNG in repo |
+| Pages HTML + external PNG | HTML only | GitHub/Actions writer for HTML, image writer for PNG origin | Wait for Pages HTML deploy; image can be ready independently | `og:image` can point to prebuilt default PNG if replay image missing |
+| Worker URL + Worker PNG | none on Pages | Worker deploy/runtime only | Immediate after replay save | Worker can return default PNG on decode/render failure |
+| Custom domain Worker PNG | none on Pages | Worker deploy/runtime + DNS | Immediate after replay save | Worker can return default PNG on decode/render failure |
+
+For Tono's exact wish, "share URL on GitHub Pages, image on another server", the second row is the smallest matching shape.
+
 ## Prototype Included
 
 `tools/generate-static-replay-share.mjs` generates a GitHub Pages-compatible static replay share page from an existing server replay ID:
@@ -105,3 +154,25 @@ It fetches the existing Worker replay and SVG image, converts the SVG to PNG usi
 - `static-replays/:id/og.svg`
 
 This proves the GitHub Pages static PNG route can match the beta mechanism. It is not yet an automatic production flow.
+
+The same tool can also write a hybrid HTML-only page whose OGP image is hosted elsewhere:
+
+```sh
+node tools/generate-static-replay-share.mjs TLlUZkSDP0ACY1Z0 \
+  --out-dir static-replays-hybrid \
+  --page-base https://tonochan.github.io/supernova/static-replays-hybrid \
+  --image-url https://raw.githubusercontent.com/tonochan/supernova/974d1568fba8c2b6c923d97be0903317dc72872d/static-replays/TLlUZkSDP0ACY1Z0/og.png \
+  --skip-image-files
+```
+
+It writes only:
+
+- `static-replays-hybrid/:id/index.html`
+
+The generated page URL, if deployed to GitHub Pages, would be:
+
+- `https://tonochan.github.io/supernova/static-replays-hybrid/TLlUZkSDP0ACY1Z0/`
+
+The generated page's `og:image` points to a different origin:
+
+- `https://raw.githubusercontent.com/tonochan/supernova/974d1568fba8c2b6c923d97be0903317dc72872d/static-replays/TLlUZkSDP0ACY1Z0/og.png`

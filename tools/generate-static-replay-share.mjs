@@ -19,6 +19,7 @@ function usage() {
   return [
     "Usage:",
     "  node tools/generate-static-replay-share.mjs <replay-id> [--out-dir static-replays] [--page-base https://tonochan.github.io/supernova/static-replays]",
+    "  node tools/generate-static-replay-share.mjs <replay-id> --image-url https://cdn.example.com/og.png --skip-image-files",
     "",
     "Example:",
     "  node tools/generate-static-replay-share.mjs TLlUZkSDP0ACY1Z0",
@@ -38,18 +39,30 @@ function parseArgs(argv) {
     apiBase: DEFAULT_API_BASE,
     pageBase: DEFAULT_PAGE_BASE,
     gameBase: DEFAULT_GAME_BASE,
+    imageUrl: null,
     outDir: DEFAULT_OUT_DIR,
+    skipImageFiles: false,
   };
 
-  for (let i = 0; i < rest.length; i += 2) {
+  for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
-    const value = rest[i + 1];
+    if (flag === "--skip-image-files") {
+      options.skipImageFiles = true;
+      continue;
+    }
+
+    const value = rest[++i];
     if (!value) throw new Error(`Missing value for ${flag}`);
     if (flag === "--api-base") options.apiBase = value.replace(/\/+$/, "");
     else if (flag === "--page-base") options.pageBase = value.replace(/\/+$/, "");
     else if (flag === "--game-base") options.gameBase = value;
+    else if (flag === "--image-url") options.imageUrl = value;
     else if (flag === "--out-dir") options.outDir = value;
     else throw new Error(`Unknown option: ${flag}`);
+  }
+
+  if (options.skipImageFiles && !options.imageUrl) {
+    throw new Error("--skip-image-files requires --image-url");
   }
 
   return options;
@@ -156,7 +169,9 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const replay = await fetchJson(`${options.apiBase}/v1/replays/${encodeURIComponent(options.id)}`);
   const landingHtml = await fetchText(`${options.apiBase}/r/${encodeURIComponent(options.id)}`);
-  const svg = await fetchText(`${options.apiBase}/r/${encodeURIComponent(options.id)}/og.svg`);
+  const svg = options.skipImageFiles
+    ? null
+    : await fetchText(`${options.apiBase}/r/${encodeURIComponent(options.id)}/og.svg`);
 
   const summary = replay.summary || {};
   const score = Number(summary.score) || 0;
@@ -165,7 +180,7 @@ async function main() {
   const title = metaContent(landingHtml, "og:title") || `SUPERNOVA Replay - ${formatNumber(score)} pts`;
   const description = metaContent(landingHtml, "og:description") || `Replay / ${formatNumber(moves)} moves`;
   const pageUrl = `${options.pageBase}/${options.id}/`;
-  const imageUrl = `${pageUrl}og.png`;
+  const imageUrl = options.imageUrl || `${pageUrl}og.png`;
   const gameUrl = new URL(options.gameBase);
   gameUrl.searchParams.set("replay", `srv1${options.id}`);
 
@@ -175,14 +190,23 @@ async function main() {
   const htmlPath = join(outDir, "index.html");
 
   await mkdir(outDir, { recursive: true });
-  await writeFile(svgPath, svg);
-  convertSvgToPng(svgPath, pngPath);
+  if (!options.skipImageFiles) {
+    await writeFile(svgPath, svg);
+    convertSvgToPng(svgPath, pngPath);
+  }
   await writeFile(
     htmlPath,
     renderHtml({ id: options.id, pageUrl, imageUrl, gameUrl: gameUrl.toString(), title, description }),
   );
 
-  console.log(JSON.stringify({ pageUrl, imageUrl, outDir, htmlPath, pngPath, svgPath }, null, 2));
+  console.log(JSON.stringify({
+    pageUrl,
+    imageUrl,
+    outDir,
+    htmlPath,
+    pngPath: options.skipImageFiles ? null : pngPath,
+    svgPath: options.skipImageFiles ? null : svgPath,
+  }, null, 2));
 }
 
 main().catch((error) => {
