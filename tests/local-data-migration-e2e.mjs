@@ -86,7 +86,7 @@ async function waitForHttp(url, timeoutMs = 8000) {
 async function startChrome() {
   const debuggingPort = await freePort();
   userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "supernova-e2e-"));
-  chrome = spawn(chromePath, [
+  const args = [
     "--headless=new",
     "--disable-gpu",
     "--disable-popup-blocking",
@@ -94,7 +94,11 @@ async function startChrome() {
     `--user-data-dir=${userDataDir}`,
     `--remote-debugging-port=${debuggingPort}`,
     "about:blank",
-  ], { stdio: ["ignore", "ignore", "ignore"] });
+  ];
+  if (process.env.CHROME_HOST_RESOLVER_RULES) {
+    args.splice(-1, 0, `--host-resolver-rules=${process.env.CHROME_HOST_RESOLVER_RULES}`);
+  }
+  chrome = spawn(chromePath, args, { stdio: ["ignore", "ignore", "ignore"] });
   await waitForHttp(`http://127.0.0.1:${debuggingPort}/json/version`);
   return debuggingPort;
 }
