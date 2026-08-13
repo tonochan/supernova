@@ -2,6 +2,10 @@
 
 Date: 2026-08-13
 
+Related follow-up:
+
+- `docs/custom-domain-full-migration-cutover.md` covers the later question: if `supernova.tonochan.jp` is introduced, should the public game app also move, and how should old URLs redirect safely?
+
 ## Tono Question
 
 > Github側はページ作らずにやる方法はない？OGPはパラメーターからJavascript完結で動作させたりはできない？ 難しければそろそろ supernova.tonochan.jp とかのドメインを割り当てて、本体をgithub外に持っていく事を考えたほうがいいかな？
