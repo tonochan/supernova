@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260813-1440">
+<link rel="stylesheet" href="style.css?v=20260813-1934">
 </head>
 <body>
 
@@ -103,6 +103,7 @@
     <button class="btn btn-ghost" id="howto-btn">How to play</button>
     <button class="btn btn-ghost hidden" id="last-replay-btn">Last replay</button>
     <button class="btn btn-ghost" id="history-btn">Play history</button>
+    <button class="btn btn-ghost btn-mini" id="migration-btn" type="button">Import old data</button>
     <button class="btn btn-ghost btn-mini" id="lang-btn-title">日本語</button>
     <div class="title-release">
       <span class="version" id="version"></span>
@@ -160,6 +161,18 @@
   </div>
 </div>
 
+<div class="modal hidden" id="migration-modal" role="dialog" aria-modal="true" aria-labelledby="migration-title">
+  <div class="modal-card modal-small migration-card">
+    <p class="confirm-title" id="migration-title">Move saved data?</p>
+    <p class="confirm-text migration-text" id="migration-text">Bring best score, discovered elements, play history, last replay, and an in-progress board from the old GitHub Pages version.</p>
+    <p class="migration-status" id="migration-status" aria-live="polite"></p>
+    <div class="confirm-buttons">
+      <button class="btn" id="migration-start" type="button">Import from old site</button>
+      <button class="btn btn-ghost" id="migration-close" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal hidden" id="back-modal">
   <div class="modal-card modal-small">
     <p class="confirm-title" id="back-title">Back to title?</p>
@@ -182,6 +195,6 @@
   </div>
 </div>
 
-<script src="game.js?v=20260813-1440"></script>
+<script src="game.js?v=20260813-1934"></script>
 </body>
 </html>

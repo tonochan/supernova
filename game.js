@@ -11,6 +11,7 @@ const COLORS = ["red", "yellow", "green", "blue"];
 const NOVA_AT = 26; // Fe: これ以上は超新星でしか作れない
 const HOLE_AT = 119; // 周期表の果て(Og=118)を超えるとブラックホール
 const STORAGE_KEY = "supernova-best";
+const FOUND_KEY = "supernova-found";
 const GAME_STATE_KEY = "supernova-game-state";
 const GAME_STATE_KIND = "supernova-game-state";
 const GAME_STATE_SCHEMA_VERSION = 1;
@@ -29,6 +30,12 @@ const REPLAY_SHARE_SERVER_ID_RE = /^[A-Za-z0-9_-]{16}$/;
 const REPLAY_SHARE_API_BASE = "https://supernova.tonochan.jp/v1";
 const REPLAY_SHARE_LOCAL_API_BASE = "http://127.0.0.1:8787/v1";
 const RULES_VERSION = 1;
+const LOCAL_DATA_MIGRATION_KIND = "supernova-local-data-migration";
+const LOCAL_DATA_MIGRATION_ACK_KIND = "supernova-local-data-migration-ack";
+const LOCAL_DATA_MIGRATION_SCHEMA_VERSION = 1;
+const LOCAL_DATA_MIGRATION_SOURCE_ORIGIN = "https://tonochan.github.io";
+const LOCAL_DATA_MIGRATION_TARGET_ORIGIN = "https://supernova.tonochan.jp";
+const LOCAL_DATA_MIGRATION_MAX_CHARS = 5_000_000;
 
 const ELEMENTS = [
   "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
@@ -78,7 +85,15 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-13 14:40 JST";
+const BUILD_VERSION = "2026-08-13 19:34 JST";
+const LOCAL_DATA_MIGRATION_ALLOWED_KEYS = new Set([
+  STORAGE_KEY,
+  FOUND_KEY,
+  GAME_STATE_KEY,
+  REPLAY_KEY,
+  REPLAY_HISTORY_KEY,
+  LANG_KEY,
+]);
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -128,6 +143,18 @@ const STR = {
     historyEmpty: "No saved plays yet",
     historyClose: "Close",
     historyOpen: "Replay",
+    migrationBtn: "Import old data",
+    migrationTitle: "Move saved data?",
+    migrationText: "Bring best score, discovered elements, play history, last replay, and an in-progress board from the old GitHub Pages version.",
+    migrationStart: "Import from old site",
+    migrationClose: "Close",
+    migrationWaiting: "Opening the old site. Please allow the small window and keep this tab open.",
+    migrationPopupBlocked: "The old site could not open. Please allow popups and try again.",
+    migrationNoData: "No old saved data was found.",
+    migrationAlready: "Saved data is already up to date.",
+    migrationImported: (count) => `Imported ${count} item${count === 1 ? "" : "s"}.`,
+    migrationFailed: "The saved data could not be imported.",
+    migrationClosed: "The old site window closed before the import finished.",
     historyScore: "Score",
     historyMax: "Max",
     historyMoves: "moves",
@@ -196,6 +223,18 @@ const STR = {
     historyEmpty: "まだ履歴がありません",
     historyClose: "閉じる",
     historyOpen: "リプレイ",
+    migrationBtn: "旧データ移行",
+    migrationTitle: "旧データを移しますか?",
+    migrationText: "GitHub Pages版に残っているベスト、発見元素、プレイ履歴、前回リプレイ、途中の盤面をこのURLへ取り込みます。",
+    migrationStart: "旧サイトから取り込む",
+    migrationClose: "閉じる",
+    migrationWaiting: "旧サイトを小さなウィンドウで開いています。このタブを閉じずにお待ちください。",
+    migrationPopupBlocked: "旧サイトを開けませんでした。ポップアップを許可してもう一度試してください。",
+    migrationNoData: "移行できる旧データは見つかりませんでした。",
+    migrationAlready: "保存データはすでに最新です。",
+    migrationImported: (count) => `${count}件の保存データを取り込みました。`,
+    migrationFailed: "保存データを取り込めませんでした。",
+    migrationClosed: "取り込み完了前に旧サイトのウィンドウが閉じられました。",
     historyScore: "スコア",
     historyMax: "最大",
     historyMoves: "手",
@@ -263,6 +302,13 @@ const historyTitleEl = document.getElementById("history-title");
 const historyEmptyEl = document.getElementById("history-empty");
 const historyListEl = document.getElementById("history-list");
 const historyCloseEl = document.getElementById("history-close");
+const migrationBtnEl = document.getElementById("migration-btn");
+const migrationModalEl = document.getElementById("migration-modal");
+const migrationTitleEl = document.getElementById("migration-title");
+const migrationTextEl = document.getElementById("migration-text");
+const migrationStatusEl = document.getElementById("migration-status");
+const migrationStartEl = document.getElementById("migration-start");
+const migrationCloseEl = document.getElementById("migration-close");
 
 let grid; // grid[r][c] = tile or null
 let score = 0;
@@ -285,6 +331,10 @@ let replayReturnTarget = "gameover";
 let isReplayMode = false;
 let pendingImpactTile = null;
 let pendingImpactGroup = [];
+let migrationPopup = null;
+let migrationInProgress = false;
+let migrationTimeout = null;
+let migrationCloseTimer = null;
 
 // ---------- 表示ユーティリティ ----------
 
@@ -1460,37 +1510,71 @@ function cleanSavedReplay(replay, expectedBoardHash) {
   }
 }
 
+function cleanGameStatePayload(parsed) {
+  if (
+    !parsed ||
+    parsed.kind !== GAME_STATE_KIND ||
+    parsed.schemaVersion !== GAME_STATE_SCHEMA_VERSION ||
+    parsed.rulesVersion !== RULES_VERSION ||
+    parsed.boardSize !== SIZE
+  ) {
+    return null;
+  }
+
+  const cleanBoard = cleanReplayBoard(parsed.grid);
+  const scoreValue = Number(parsed.score);
+  const maxTileValue = Number(parsed.maxTile);
+  if (!Number.isFinite(scoreValue) || scoreValue < 0) return null;
+  if (!Number.isInteger(maxTileValue) || maxTileValue < 1) return null;
+
+  const boardMaxTile = cleanBoard.flat().reduce((max, cell) => Math.max(max, cell?.value || 1), 1);
+  const boardHash = replayBoardHash(cleanBoard);
+  return {
+    grid: cleanBoard,
+    score: Math.floor(scoreValue),
+    best: Number(parsed.best),
+    maxTile: Math.max(maxTileValue, boardMaxTile),
+    firstMergeDone: Boolean(parsed.firstMergeDone || scoreValue > 0),
+    currentReplay: cleanSavedReplay(parsed.currentReplay, boardHash),
+    savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : "",
+    appVersion: typeof parsed.appVersion === "string" ? parsed.appVersion : "",
+  };
+}
+
+function parseGameStateLocalRaw(raw) {
+  if (!raw || raw.length > LOCAL_DATA_MIGRATION_MAX_CHARS) return null;
+  try {
+    return cleanGameStatePayload(JSON.parse(raw));
+  } catch (_) {
+    return null;
+  }
+}
+
+function gameStateForStorage(state, importedFrom = "") {
+  return {
+    kind: GAME_STATE_KIND,
+    schemaVersion: GAME_STATE_SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    appVersion: state.appVersion || BUILD_VERSION,
+    savedAt: state.savedAt || new Date().toISOString(),
+    boardSize: SIZE,
+    grid: cloneJson(state.grid),
+    score: state.score,
+    best: Number.isFinite(state.best) ? Math.floor(state.best) : best,
+    maxTile: state.maxTile,
+    firstMergeDone: state.firstMergeDone,
+    currentReplay: cloneJson(state.currentReplay),
+    importedFrom,
+  };
+}
+
 function loadGameStateLocal() {
   try {
     const raw = localStorage.getItem(GAME_STATE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (
-      !parsed ||
-      parsed.kind !== GAME_STATE_KIND ||
-      parsed.schemaVersion !== GAME_STATE_SCHEMA_VERSION ||
-      parsed.rulesVersion !== RULES_VERSION ||
-      parsed.boardSize !== SIZE
-    ) {
-      throw new Error("Unsupported saved state");
-    }
-
-    const cleanBoard = cleanReplayBoard(parsed.grid);
-    const scoreValue = Number(parsed.score);
-    const maxTileValue = Number(parsed.maxTile);
-    if (!Number.isFinite(scoreValue) || scoreValue < 0) throw new Error("Invalid saved score");
-    if (!Number.isInteger(maxTileValue) || maxTileValue < 1) throw new Error("Invalid saved max tile");
-
-    const boardMaxTile = cleanBoard.flat().reduce((max, cell) => Math.max(max, cell?.value || 1), 1);
-    const boardHash = replayBoardHash(cleanBoard);
-    return {
-      grid: cleanBoard,
-      score: Math.floor(scoreValue),
-      best: Number(parsed.best),
-      maxTile: Math.max(maxTileValue, boardMaxTile),
-      firstMergeDone: Boolean(parsed.firstMergeDone || scoreValue > 0),
-      currentReplay: cleanSavedReplay(parsed.currentReplay, boardHash),
-    };
+    const state = parseGameStateLocalRaw(raw);
+    if (!state) throw new Error("Unsupported saved state");
+    return state;
   } catch (_) {
     clearGameState();
     return null;
@@ -1537,6 +1621,348 @@ function restoreGameState(state) {
   } catch (_) {
     clearGameState();
     return false;
+  }
+}
+
+// ---------- 旧GitHub Pages版からのローカルデータ移行 ----------
+
+function migrationSourceOrigin() {
+  return window.__SUPERNOVA_MIGRATION_SOURCE_ORIGIN || LOCAL_DATA_MIGRATION_SOURCE_ORIGIN;
+}
+
+function migrationTargetOrigin() {
+  return window.__SUPERNOVA_MIGRATION_TARGET_ORIGIN || LOCAL_DATA_MIGRATION_TARGET_ORIGIN;
+}
+
+function migrationBridgeUrl() {
+  if (window.__SUPERNOVA_MIGRATION_BRIDGE_URL) return window.__SUPERNOVA_MIGRATION_BRIDGE_URL;
+  const url = new URL("/supernova/migrate/", migrationSourceOrigin());
+  url.searchParams.set("v", BUILD_VERSION.replace(/\D/g, "").slice(0, 12) || String(Date.now()));
+  return url.toString();
+}
+
+function setMigrationStatus(text, kind = "") {
+  migrationStatusEl.textContent = text;
+  migrationStatusEl.className = "migration-status";
+  if (kind) migrationStatusEl.classList.add(kind);
+}
+
+function clearMigrationTimers() {
+  clearTimeout(migrationTimeout);
+  clearInterval(migrationCloseTimer);
+  migrationTimeout = null;
+  migrationCloseTimer = null;
+}
+
+function finishMigration(statusText, kind = "strong") {
+  migrationInProgress = false;
+  migrationStartEl.disabled = false;
+  clearMigrationTimers();
+  setMigrationStatus(statusText, kind);
+  if (migrationPopup && !migrationPopup.closed) {
+    setTimeout(() => {
+      try {
+        migrationPopup.close();
+      } catch (_) {
+        /* noop */
+      }
+    }, 900);
+  }
+}
+
+function openMigrationModal() {
+  migrationModalEl.classList.remove("hidden");
+  migrationStartEl.disabled = false;
+  setMigrationStatus("");
+}
+
+function closeMigrationModal() {
+  migrationInProgress = false;
+  migrationStartEl.disabled = false;
+  clearMigrationTimers();
+  if (migrationPopup && !migrationPopup.closed) {
+    try {
+      migrationPopup.close();
+    } catch (_) {
+      /* noop */
+    }
+  }
+  migrationModalEl.classList.add("hidden");
+}
+
+function startLocalDataMigration() {
+  clearMigrationTimers();
+  migrationInProgress = false;
+  migrationStartEl.disabled = true;
+  setMigrationStatus(STR[lang].migrationWaiting);
+
+  migrationPopup = window.open(
+    migrationBridgeUrl(),
+    "supernova-local-data-migration",
+    "popup,width=420,height=620"
+  );
+  if (!migrationPopup) {
+    finishMigration(STR[lang].migrationPopupBlocked, "error");
+    return;
+  }
+
+  migrationInProgress = true;
+  migrationTimeout = setTimeout(() => {
+    if (migrationInProgress) finishMigration(STR[lang].migrationClosed, "error");
+  }, 30000);
+  migrationCloseTimer = setInterval(() => {
+    if (migrationInProgress && migrationPopup?.closed) finishMigration(STR[lang].migrationClosed, "error");
+  }, 500);
+}
+
+function migrationMessageKeys(data, eventOrigin) {
+  if (
+    !data ||
+    data.kind !== LOCAL_DATA_MIGRATION_KIND ||
+    data.schemaVersion !== LOCAL_DATA_MIGRATION_SCHEMA_VERSION ||
+    data.sourceOrigin !== eventOrigin ||
+    data.targetOrigin !== migrationTargetOrigin()
+  ) {
+    throw new Error("Invalid migration message");
+  }
+  if (data.error) throw new Error(String(data.error));
+  const payloadText = JSON.stringify(data);
+  if (payloadText.length > LOCAL_DATA_MIGRATION_MAX_CHARS) throw new Error("Migration payload too large");
+  if (!data.keys || typeof data.keys !== "object" || Array.isArray(data.keys)) {
+    throw new Error("Invalid migration keys");
+  }
+
+  const keys = {};
+  for (const [key, value] of Object.entries(data.keys)) {
+    if (!LOCAL_DATA_MIGRATION_ALLOWED_KEYS.has(key)) throw new Error("Unexpected migration key");
+    if (typeof value !== "string" || value.length > LOCAL_DATA_MIGRATION_MAX_CHARS) {
+      throw new Error("Invalid migration value");
+    }
+    keys[key] = value;
+  }
+  return keys;
+}
+
+function migrationResultLabel(result) {
+  if (!result.seen) return STR[lang].migrationNoData;
+  if (result.failed && !result.updated) return STR[lang].migrationFailed;
+  if (!result.updated) return STR[lang].migrationAlready;
+  return STR[lang].migrationImported(result.updated);
+}
+
+function noteMigrationOutcome(result, status) {
+  if (status === "updated") result.updated += 1;
+  else if (status === "failed") result.failed += 1;
+}
+
+function mergeImportedBest(raw) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) return "failed";
+  const incoming = Math.floor(value);
+  if (incoming <= best) return "skipped";
+  try {
+    localStorage.setItem(STORAGE_KEY, String(incoming));
+  } catch (_) {
+    return "failed";
+  }
+  best = incoming;
+  bestEl.textContent = fmt(best);
+  return "updated";
+}
+
+function mergeImportedFound(raw) {
+  let imported;
+  try {
+    imported = cleanFoundIds(JSON.parse(raw));
+  } catch (_) {
+    return "failed";
+  }
+  const next = new Set(found);
+  for (const id of imported) next.add(id);
+  if (next.size === found.size) return "skipped";
+  try {
+    localStorage.setItem(FOUND_KEY, JSON.stringify([...next]));
+  } catch (_) {
+    return "failed";
+  }
+  found.clear();
+  for (const id of next) found.add(id);
+  refreshPtable();
+  return "updated";
+}
+
+function cleanImportedReplay(raw, requireFinal = true) {
+  if (!raw || raw.length > LOCAL_DATA_MIGRATION_MAX_CHARS) return null;
+  try {
+    const replay = JSON.parse(raw);
+    if (!isReplayData(replay) || replay.rulesVersion !== RULES_VERSION) return null;
+    if (requireFinal && !replay.final) return null;
+    buildReplayFrames(replay);
+    return replay;
+  } catch (_) {
+    return null;
+  }
+}
+
+function replayComparableTime(replay) {
+  return Date.parse(replay?.completedAt || replay?.createdAt || "") || 0;
+}
+
+function replayComparableScore(replay) {
+  return Number(replay?.final?.score) || 0;
+}
+
+function shouldReplaceReplay(current, incoming) {
+  if (!current) return true;
+  const currentTime = replayComparableTime(current);
+  const incomingTime = replayComparableTime(incoming);
+  if (incomingTime !== currentTime) return incomingTime > currentTime;
+  return replayComparableScore(incoming) > replayComparableScore(current);
+}
+
+function mergeImportedLastReplay(raw) {
+  const imported = cleanImportedReplay(raw);
+  if (!imported) return "failed";
+  const current = lastReplay || loadReplayLocal();
+  if (!shouldReplaceReplay(current, imported)) return "skipped";
+  try {
+    localStorage.setItem(REPLAY_KEY, JSON.stringify(imported));
+  } catch (_) {
+    return "failed";
+  }
+  lastReplay = imported;
+  updateReplayEntryPoints();
+  return "updated";
+}
+
+function replayEntryTime(entry) {
+  return Date.parse(entry.savedAt || entry.replay?.completedAt || entry.replay?.createdAt || "") || 0;
+}
+
+function cleanImportedReplayHistoryEntry(entry) {
+  const clean = cleanReplayHistoryEntry(entry);
+  if (!clean) return null;
+  try {
+    buildReplayFrames(clean.replay);
+    return clean;
+  } catch (_) {
+    return null;
+  }
+}
+
+function mergeImportedReplayHistory(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_) {
+    return "failed";
+  }
+  if (!Array.isArray(parsed)) return "failed";
+
+  const imported = parsed.map(cleanImportedReplayHistoryEntry).filter(Boolean);
+  if (!imported.length) return "skipped";
+
+  const before = new Map(replayHistory.map((entry) => [entry.id, entry]));
+  const merged = new Map(before);
+  let changed = false;
+  for (const entry of imported) {
+    const current = merged.get(entry.id);
+    if (!current || replayEntryTime(entry) > replayEntryTime(current)) {
+      merged.set(entry.id, entry);
+      changed = true;
+    }
+  }
+
+  const next = [...merged.values()]
+    .sort((a, b) => replayEntryTime(b) - replayEntryTime(a))
+    .slice(0, REPLAY_HISTORY_MAX);
+  const beforeSig = replayHistory.map((entry) => `${entry.id}:${entry.savedAt}`).join("|");
+  const nextSig = next.map((entry) => `${entry.id}:${entry.savedAt}`).join("|");
+  if (!changed && beforeSig === nextSig) return "skipped";
+  replayHistory = next;
+  writeReplayHistoryLocal();
+  return "updated";
+}
+
+function mergeImportedLang(raw) {
+  const value = String(raw);
+  if (value !== "ja" && value !== "en") return "failed";
+  if (localStorage.getItem(LANG_KEY)) return "skipped";
+  try {
+    localStorage.setItem(LANG_KEY, value);
+  } catch (_) {
+    return "failed";
+  }
+  lang = value;
+  applyLang();
+  return "updated";
+}
+
+function mergeImportedGameState(raw) {
+  const incoming = parseGameStateLocalRaw(raw);
+  if (!incoming) return "failed";
+  const existing = parseGameStateLocalRaw(localStorage.getItem(GAME_STATE_KEY));
+  const incomingTime = Date.parse(incoming.savedAt) || 0;
+  const existingTime = Date.parse(existing?.savedAt || "") || 0;
+  if (existing && existingTime >= incomingTime) return "skipped";
+
+  if (!writeGameState(gameStateForStorage(incoming, "github-pages"))) return "failed";
+  if (!isReplayMode && titleScreen && !titleScreen.classList.contains("gone")) restoreGameState(incoming);
+  return "updated";
+}
+
+function applyLocalDataMigration(keys) {
+  const result = { seen: 0, updated: 0, failed: 0 };
+  const mergeByKey = {
+    [STORAGE_KEY]: mergeImportedBest,
+    [FOUND_KEY]: mergeImportedFound,
+    [REPLAY_KEY]: mergeImportedLastReplay,
+    [REPLAY_HISTORY_KEY]: mergeImportedReplayHistory,
+    [LANG_KEY]: mergeImportedLang,
+    [GAME_STATE_KEY]: mergeImportedGameState,
+  };
+
+  for (const key of LOCAL_DATA_MIGRATION_ALLOWED_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(keys, key)) continue;
+    result.seen += 1;
+    let status = "failed";
+    try {
+      status = mergeByKey[key](keys[key]);
+    } catch (_) {
+      status = "failed";
+    }
+    noteMigrationOutcome(result, status);
+  }
+  return result;
+}
+
+function acknowledgeMigration(event, status, result = {}) {
+  try {
+    event.source?.postMessage(
+      {
+        kind: LOCAL_DATA_MIGRATION_ACK_KIND,
+        schemaVersion: LOCAL_DATA_MIGRATION_SCHEMA_VERSION,
+        status,
+        result,
+      },
+      event.origin
+    );
+  } catch (_) {
+    /* noop */
+  }
+}
+
+function handleLocalDataMigrationMessage(event) {
+  if (!migrationInProgress) return;
+  if (event.origin !== migrationSourceOrigin()) return;
+  try {
+    const keys = migrationMessageKeys(event.data, event.origin);
+    const result = applyLocalDataMigration(keys);
+    acknowledgeMigration(event, "ok", result);
+    finishMigration(migrationResultLabel(result), result.updated ? "strong" : "");
+  } catch (_) {
+    acknowledgeMigration(event, "error");
+    finishMigration(STR[lang].migrationFailed, "error");
   }
 }
 
@@ -1844,9 +2270,26 @@ function exitReplay() {
 
 // ---------- 元素の発見コレクション ----------
 
-const FOUND_KEY = "supernova-found";
+function cleanFoundIds(value) {
+  if (!Array.isArray(value)) return [1];
+  const ids = new Set([1]);
+  for (const raw of value) {
+    const id = Number(raw);
+    if (Number.isInteger(id) && id >= 0 && id <= ELEMENTS.length) ids.add(id);
+  }
+  return [...ids];
+}
+
+function loadFoundLocal() {
+  try {
+    return cleanFoundIds(JSON.parse(localStorage.getItem(FOUND_KEY) || "[1]"));
+  } catch (_) {
+    return [1];
+  }
+}
+
 // 0 はブラックホールの印。H(1)は最初から知っている
-const found = new Set(JSON.parse(localStorage.getItem(FOUND_KEY) || "[1]"));
+const found = new Set(loadFoundLocal());
 
 const toastEl = document.getElementById("toast");
 let toastTimer = null;
@@ -2273,6 +2716,13 @@ historyCloseEl.addEventListener("click", closeReplayHistory);
 historyModalEl.addEventListener("click", (e) => {
   if (e.target === historyModalEl) closeReplayHistory();
 });
+migrationBtnEl.addEventListener("click", openMigrationModal);
+migrationStartEl.addEventListener("click", startLocalDataMigration);
+migrationCloseEl.addEventListener("click", closeMigrationModal);
+migrationModalEl.addEventListener("click", (e) => {
+  if (e.target === migrationModalEl) closeMigrationModal();
+});
+window.addEventListener("message", handleLocalDataMigrationMessage);
 
 // 戻るボタン → 確認モーダル → ホーム(タイトル)へ。ゲームはリセットされる
 const backModal = document.getElementById("back-modal");
@@ -2335,6 +2785,11 @@ function applyLang() {
   setText("share-replay-btn", s.shareReplay);
   setText("last-replay-btn", s.lastReplay);
   setText("history-btn", s.history);
+  setText("migration-btn", s.migrationBtn);
+  setText("migration-title", s.migrationTitle);
+  setText("migration-text", s.migrationText);
+  setText("migration-start", s.migrationStart);
+  setText("migration-close", s.migrationClose);
   for (const id of ["hs1", "hs2", "hs3", "hs4", "hs5"]) {
     document.getElementById(id).innerHTML = s[id];
   }

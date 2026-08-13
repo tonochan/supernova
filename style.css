@@ -1082,6 +1082,28 @@ body.replay-active .hint {
   font-size: 13px;
 }
 
+.migration-card {
+  width: min(88vw, 360px);
+}
+.migration-text {
+  margin-bottom: 12px;
+}
+.migration-status {
+  min-height: 18px;
+  margin: 0 0 14px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.migration-status.strong {
+  color: var(--gold);
+  font-weight: 700;
+}
+.migration-status.error {
+  color: #ffb2a0;
+  font-weight: 700;
+}
+
 /* 確認モーダル(小さめ・中央寄せ) */
 .modal-small {
   width: min(84vw, 320px);
