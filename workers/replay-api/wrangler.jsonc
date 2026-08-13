@@ -7,10 +7,26 @@
   "observability": {
     "enabled": true
   },
+  "assets": {
+    "directory": "../../dist/worker-assets",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/v1/*",
+      "/r/*"
+    ]
+  },
+  "routes": [
+    {
+      "pattern": "supernova.tonochan.jp",
+      "custom_domain": true
+    }
+  ],
   "vars": {
-    "ALLOWED_ORIGINS": "https://tonochan.github.io,http://localhost:8420,http://127.0.0.1:8420",
+    "ALLOWED_ORIGINS": "https://supernova.tonochan.jp,https://tonochan.github.io,http://localhost:8420,http://127.0.0.1:8420",
     "MAX_PAYLOAD_CHARS": "262144",
-    "GAME_BASE_URL": "https://tonochan.github.io/supernova/"
+    "GAME_BASE_URL": "https://supernova.tonochan.jp/",
+    "CANONICAL_ORIGIN": "https://supernova.tonochan.jp"
   },
   "kv_namespaces": [
     {
@@ -22,9 +38,10 @@
     "beta": {
       "name": "supernova-replay-api-ogp-beta",
       "vars": {
-        "ALLOWED_ORIGINS": "https://tonochan.github.io,http://localhost:8420,http://127.0.0.1:8420",
+        "ALLOWED_ORIGINS": "https://supernova.tonochan.jp,https://tonochan.github.io,http://localhost:8420,http://127.0.0.1:8420",
         "MAX_PAYLOAD_CHARS": "262144",
-        "GAME_BASE_URL": "https://tonochan.github.io/supernova/beta/"
+        "GAME_BASE_URL": "https://tonochan.github.io/supernova/beta/",
+        "CANONICAL_ORIGIN": "https://supernova.tonochan.jp"
       },
       "kv_namespaces": [
         {

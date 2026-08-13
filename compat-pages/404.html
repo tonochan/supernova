@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#141a33">
+<link rel="canonical" href="https://supernova.tonochan.jp/">
+<title>SUPERNOVA moved</title>
+<style>
+html,body{margin:0;min-height:100%;background:#101524;color:#f7f8ff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{display:grid;place-items:center}
+main{width:min(520px,calc(100% - 40px));text-align:center}
+h1{font-size:34px;margin:0 0 14px}
+p{color:#cfd6e8;line-height:1.6;margin:0 0 22px}
+a{display:inline-block;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;text-decoration:none;padding:12px 18px}
+</style>
+<script>
+(function () {
+  var target = new URL("https://supernova.tonochan.jp/");
+  var prefix = "/supernova";
+  if (window.location.pathname.indexOf(prefix + "/") === 0) {
+    target.pathname = window.location.pathname.slice(prefix.length) || "/";
+  }
+  target.search = window.location.search;
+  target.hash = window.location.hash;
+  window.__supernovaMovedUrl = target.toString();
+  window.location.replace(window.__supernovaMovedUrl);
+})();
+</script>
+</head>
+<body>
+<main>
+<h1>SUPERNOVA moved</h1>
+<p>The game now lives at supernova.tonochan.jp. Replay links keep their parameters.</p>
+<a id="move-link" href="https://supernova.tonochan.jp/">Open SUPERNOVA</a>
+</main>
+<script>
+document.getElementById("move-link").href = window.__supernovaMovedUrl || "https://supernova.tonochan.jp/";
+</script>
+</body>
+</html>

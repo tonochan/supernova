@@ -10,7 +10,9 @@ const REPLAY_SHARE_PREFIX = "snr1";
 const REPLAY_SHARE_LEGACY_PREFIX = "snr1.";
 const REPLAY_SERVER_PREFIX = "srv1";
 const REPLAY_QUERY_KEY = "replay";
-const DEFAULT_GAME_BASE_URL = "https://tonochan.github.io/supernova/";
+const DEFAULT_CANONICAL_ORIGIN = "https://supernova.tonochan.jp";
+const DEFAULT_GAME_BASE_URL = `${DEFAULT_CANONICAL_ORIGIN}/`;
+const LEGACY_WORKER_HOST = "supernova-replay-api.tonosaki-shuntaro.workers.dev";
 const SIZE = 5;
 const RULES_VERSION = 1;
 const NOVA_AT = 26;
@@ -37,6 +39,7 @@ const ELEMENTS = [
   "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
 ];
 const DEFAULT_ALLOWED_ORIGINS = [
+  DEFAULT_CANONICAL_ORIGIN,
   "https://tonochan.github.io",
   "http://localhost:8420",
   "http://127.0.0.1:8420",
@@ -93,6 +96,17 @@ function svgResponse(body, status = 200, extraHeaders = {}) {
     status,
     headers: {
       "Content-Type": "image/svg+xml; charset=utf-8",
+      "X-Robots-Tag": "noindex",
+      ...extraHeaders,
+    },
+  });
+}
+
+function pngResponse(body, status = 200, extraHeaders = {}) {
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": "image/png",
       "X-Robots-Tag": "noindex",
       ...extraHeaders,
     },
@@ -385,6 +399,27 @@ function gameBaseUrl(env) {
   return normalizeGameBaseUrl(configured || DEFAULT_GAME_BASE_URL);
 }
 
+function canonicalOrigin(env) {
+  try {
+    const configured = typeof env.CANONICAL_ORIGIN === "string" ? env.CANONICAL_ORIGIN.trim() : "";
+    return new URL(configured || DEFAULT_CANONICAL_ORIGIN).origin;
+  } catch (_) {
+    return DEFAULT_CANONICAL_ORIGIN;
+  }
+}
+
+function legacyWorkerRedirect(request, env) {
+  const url = new URL(request.url);
+  if (url.hostname !== LEGACY_WORKER_HOST || url.pathname.startsWith("/v1/")) return null;
+
+  const target = new URL(request.url);
+  const canonical = new URL(canonicalOrigin(env));
+  target.protocol = canonical.protocol;
+  target.hostname = canonical.hostname;
+  target.port = canonical.port;
+  return Response.redirect(target.toString(), 308);
+}
+
 function replayGameUrl(env, id) {
   const url = new URL(gameBaseUrl(env));
   url.searchParams.set(REPLAY_QUERY_KEY, `${REPLAY_SERVER_PREFIX}${id}`);
@@ -427,13 +462,14 @@ function replayDescription(model) {
   return `Max ${maxTileLabel(model.maxTile)} / ${formatNumber(model.moves)} moves`;
 }
 
-function absoluteUrl(request, path) {
-  return new URL(path, request.url).toString();
+function canonicalAbsoluteUrl(env, path) {
+  return new URL(path, canonicalOrigin(env)).toString();
 }
 
 function replayLandingHtml(model, urls) {
   const title = replayTitle(model);
   const description = replayDescription(model);
+  const imageType = urls.imageType || "image/png";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -449,7 +485,7 @@ function replayLandingHtml(model, urls) {
 <meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:image" content="${escapeHtml(urls.imageUrl)}">
 <meta property="og:image:secure_url" content="${escapeHtml(urls.imageUrl)}">
-<meta property="og:image:type" content="image/svg+xml">
+<meta property="og:image:type" content="${escapeHtml(imageType)}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="${escapeHtml(description)}">
@@ -630,6 +666,352 @@ ${renderBoardTiles(model.board)}
 </svg>`;
 }
 
+const OGP_PALETTE = [
+  [16, 21, 36],
+  [21, 27, 47],
+  [34, 40, 66],
+  [247, 248, 255],
+  [174, 185, 216],
+  [135, 147, 181],
+  [246, 241, 220],
+  [38, 107, 254],
+  [26, 32, 56],
+  [40, 48, 77],
+  [32, 36, 58],
+  [248, 172, 156],
+  [241, 129, 110],
+  [235, 100, 82],
+  [228, 82, 64],
+  [222, 74, 58],
+  [248, 212, 128],
+  [244, 196, 96],
+  [240, 182, 70],
+  [235, 168, 46],
+  [230, 156, 26],
+  [128, 228, 184],
+  [94, 215, 164],
+  [64, 201, 145],
+  [36, 188, 130],
+  [14, 176, 118],
+  [150, 184, 248],
+  [124, 160, 242],
+  [98, 136, 236],
+  [76, 116, 230],
+  [56, 100, 224],
+  [255, 243, 214],
+  [215, 155, 41],
+  [22, 13, 43],
+  [154, 124, 248],
+  [255, 255, 255],
+  [0, 0, 0],
+];
+
+const OGP = {
+  BG: 0,
+  PANEL: 1,
+  STROKE: 2,
+  TEXT: 3,
+  MUTED: 4,
+  SOFT: 5,
+  WARM: 6,
+  BLUE: 7,
+  EMPTY: 8,
+  TILE_STROKE: 9,
+  DARK_TEXT: 10,
+  RED: 11,
+  YELLOW: 16,
+  GREEN: 21,
+  BLUE_TILE: 26,
+  NOVA: 31,
+  GOLD: 32,
+  HOLE: 33,
+  PURPLE: 34,
+  WHITE: 35,
+  BLACK: 36,
+};
+
+const FONT = {
+  " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
+  "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+  "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+  "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+  "3": ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+  "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+  "5": ["11111", "10000", "10000", "11110", "00001", "00001", "11110"],
+  "6": ["01110", "10000", "10000", "11110", "10001", "10001", "01110"],
+  "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+  "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+  "9": ["01110", "10001", "10001", "01111", "00001", "00001", "01110"],
+  "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+  "B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+  "C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
+  "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+  "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+  "F": ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+  "G": ["01111", "10000", "10000", "10011", "10001", "10001", "01110"],
+  "H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+  "I": ["01110", "00100", "00100", "00100", "00100", "00100", "01110"],
+  "J": ["00111", "00010", "00010", "00010", "10010", "10010", "01100"],
+  "K": ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+  "L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+  "M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+  "N": ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+  "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+  "P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+  "Q": ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
+  "R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+  "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+  "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+  "U": ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+  "V": ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+  "W": ["10001", "10001", "10001", "10101", "10101", "10101", "01010"],
+  "X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+  "Y": ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
+  "Z": ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
+  "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+  ".": ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
+  ",": ["00000", "00000", "00000", "00000", "01100", "00100", "01000"],
+  "/": ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
+  ":": ["00000", "01100", "01100", "00000", "01100", "01100", "00000"],
+  "(": ["00010", "00100", "01000", "01000", "01000", "00100", "00010"],
+  ")": ["01000", "00100", "00010", "00010", "00010", "00100", "01000"],
+};
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < table.length; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function adler32(bytes) {
+  let a = 1;
+  let b = 0;
+  for (const byte of bytes) {
+    a = (a + byte) % 65521;
+    b = (b + a) % 65521;
+  }
+  return ((b << 16) | a) >>> 0;
+}
+
+function u32(value) {
+  return new Uint8Array([
+    (value >>> 24) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 8) & 0xff,
+    value & 0xff,
+  ]);
+}
+
+function bytesFromString(value) {
+  return new TextEncoder().encode(value);
+}
+
+function concatBytes(parts) {
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const out = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
+}
+
+function pngChunk(type, data = new Uint8Array()) {
+  const typeBytes = bytesFromString(type);
+  return concatBytes([u32(data.length), typeBytes, data, u32(crc32(concatBytes([typeBytes, data])))]);
+}
+
+function zlibStore(bytes) {
+  const parts = [new Uint8Array([0x78, 0x01])];
+  for (let offset = 0; offset < bytes.length; offset += 65535) {
+    const size = Math.min(65535, bytes.length - offset);
+    const final = offset + size >= bytes.length ? 1 : 0;
+    parts.push(
+      new Uint8Array([
+        final,
+        size & 0xff,
+        (size >>> 8) & 0xff,
+        (~size) & 0xff,
+        ((~size) >>> 8) & 0xff,
+      ]),
+      bytes.slice(offset, offset + size),
+    );
+  }
+  parts.push(u32(adler32(bytes)));
+  return concatBytes(parts);
+}
+
+function encodeIndexedPng(width, height, pixels) {
+  const ihdr = new Uint8Array(13);
+  ihdr.set(u32(width), 0);
+  ihdr.set(u32(height), 4);
+  ihdr[8] = 8;
+  ihdr[9] = 3;
+
+  const plte = new Uint8Array(OGP_PALETTE.length * 3);
+  OGP_PALETTE.forEach((color, i) => plte.set(color, i * 3));
+
+  const scanlines = new Uint8Array((width + 1) * height);
+  for (let y = 0; y < height; y++) {
+    scanlines[y * (width + 1)] = 0;
+    scanlines.set(pixels.slice(y * width, (y + 1) * width), y * (width + 1) + 1);
+  }
+
+  return concatBytes([
+    new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("PLTE", plte),
+    pngChunk("IDAT", zlibStore(scanlines)),
+    pngChunk("IEND"),
+  ]);
+}
+
+function makeRaster(width, height, bg = OGP.BG) {
+  const pixels = new Uint8Array(width * height);
+  pixels.fill(bg);
+
+  function fillRect(x, y, w, h, color) {
+    const x0 = Math.max(0, Math.floor(x));
+    const y0 = Math.max(0, Math.floor(y));
+    const x1 = Math.min(width, Math.ceil(x + w));
+    const y1 = Math.min(height, Math.ceil(y + h));
+    for (let py = y0; py < y1; py++) pixels.fill(color, py * width + x0, py * width + x1);
+  }
+
+  function strokeRect(x, y, w, h, color, line = 2) {
+    fillRect(x, y, w, line, color);
+    fillRect(x, y + h - line, w, line, color);
+    fillRect(x, y, line, h, color);
+    fillRect(x + w - line, y, line, h, color);
+  }
+
+  function fillCircle(cx, cy, radius, color) {
+    const r2 = radius * radius;
+    for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++) {
+      for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++) {
+        if (x >= 0 && x < width && y >= 0 && y < height && (x - cx) ** 2 + (y - cy) ** 2 <= r2) {
+          pixels[y * width + x] = color;
+        }
+      }
+    }
+  }
+
+  return { pixels, fillRect, strokeRect, fillCircle };
+}
+
+function textWidth(text, scale) {
+  return Math.max(0, String(text).length * 6 - 1) * scale;
+}
+
+function drawText(raster, text, x, y, scale, color, options = {}) {
+  const normalized = String(text).toUpperCase();
+  const startX =
+    options.align === "center" ? x - Math.floor(textWidth(normalized, scale) / 2) :
+      options.align === "right" ? x - textWidth(normalized, scale) :
+        x;
+  let cx = Math.floor(startX);
+  for (const char of normalized) {
+    const glyph = FONT[char] || FONT[" "];
+    for (let gy = 0; gy < glyph.length; gy++) {
+      for (let gx = 0; gx < glyph[gy].length; gx++) {
+        if (glyph[gy][gx] === "1") raster.fillRect(cx + gx * scale, y + gy * scale, scale, scale, color);
+      }
+    }
+    cx += 6 * scale;
+  }
+}
+
+function fitTextScale(text, maxWidth, maxScale, minScale = 1) {
+  let scale = maxScale;
+  while (scale > minScale && textWidth(text, scale) > maxWidth) scale--;
+  return scale;
+}
+
+function ogpTileColor(cell) {
+  if (!cell) return OGP.EMPTY;
+  if (cell.value >= HOLE_AT) return OGP.HOLE;
+  if (cell.value >= NOVA_AT) return OGP.NOVA;
+  const base = { red: OGP.RED, yellow: OGP.YELLOW, green: OGP.GREEN, blue: OGP.BLUE_TILE }[cell.color] || OGP.RED;
+  return base + Math.min(4, Math.floor(growthT(cell) * 5));
+}
+
+function ogpTileTextColor(cell) {
+  if (!cell) return OGP.SOFT;
+  if (cell.value >= HOLE_AT) return OGP.WHITE;
+  if (cell.value >= NOVA_AT) return OGP.DARK_TEXT;
+  return growthT(cell) > 0.55 ? OGP.WHITE : OGP.DARK_TEXT;
+}
+
+function drawOgpTile(raster, cell, r, c) {
+  const boardX = 665;
+  const boardY = 82;
+  const cellSize = 84;
+  const gap = 12;
+  const x = boardX + c * (cellSize + gap);
+  const y = boardY + r * (cellSize + gap);
+  const fill = ogpTileColor(cell);
+  const textColor = ogpTileTextColor(cell);
+  const accent = cell?.value >= HOLE_AT ? OGP.PURPLE : cell?.value >= NOVA_AT ? OGP.GOLD : OGP.WHITE;
+  const symbol = tileSymbol(cell);
+
+  raster.fillRect(x + 5, y + 6, cellSize, cellSize, OGP.BLACK);
+  raster.fillRect(x, y, cellSize, cellSize, fill);
+  raster.strokeRect(x, y, cellSize, cellSize, cell?.value >= NOVA_AT ? accent : OGP.TILE_STROKE, 3);
+  raster.fillRect(x + 7, y + 7, cellSize - 14, 16, cell?.value >= HOLE_AT ? OGP.PURPLE : OGP.WHITE);
+  raster.fillRect(x + 7, y + cellSize - 18, cellSize - 14, 11, OGP.BLACK);
+  raster.fillCircle(x + 42, y + 32, cell?.value >= HOLE_AT ? 17 : 13 + Math.round(growthT(cell || { value: 1 }) * 14), accent);
+  raster.fillCircle(x + 42, y + 32, cell?.value >= HOLE_AT ? 10 : 9, fill);
+
+  if (cell && cell.value < HOLE_AT) {
+    const mass = formatNumber(cell.value);
+    const massScale = fitTextScale(mass, 54, 2);
+    drawText(raster, mass, x + 10, y + 11, massScale, textColor);
+  }
+
+  const scale = fitTextScale(symbol, 66, symbol.length <= 2 ? 7 : 5, 2);
+  drawText(raster, symbol, x + cellSize / 2, y + 43 - Math.floor((7 * scale) / 2), scale, textColor, { align: "center" });
+}
+
+function replayOgpPng(model) {
+  const width = 1200;
+  const height = 630;
+  const raster = makeRaster(width, height);
+  const score = formatNumber(model.score);
+  const scoreScale = fitTextScale(score, 470, score.length > 9 ? 9 : 12, 5);
+  const maxText = `MAX ${maxTileLabel(model.maxTile)}`;
+  const boardNote = model.decodeFailed ? "BOARD PREVIEW UNAVAILABLE" : model.board ? "FINAL BOARD" : "REPLAY SUMMARY";
+
+  raster.fillRect(0, 0, width, height, OGP.BG);
+  raster.fillRect(48, 48, 1104, 534, OGP.PANEL);
+  raster.strokeRect(48, 48, 1104, 534, OGP.STROKE, 3);
+  raster.fillRect(638, 55, 516, 522, OGP.EMPTY);
+  raster.strokeRect(638, 55, 516, 522, OGP.STROKE, 3);
+
+  drawText(raster, "SUPERNOVA", 78, 82, 8, OGP.TEXT);
+  drawText(raster, "REPLAY", 82, 150, 4, OGP.MUTED);
+  drawText(raster, score, 78, 226, scoreScale, OGP.TEXT);
+  drawText(raster, "POINTS", 84, 335, 4, OGP.MUTED);
+  raster.fillRect(78, 394, 468, 3, OGP.STROKE);
+  drawText(raster, maxText, 84, 430, fitTextScale(maxText, 460, 4, 2), OGP.WARM);
+  drawText(raster, `${formatNumber(model.moves)} MOVES`, 84, 488, 4, OGP.TEXT);
+  drawText(raster, boardNote, 84, 540, fitTextScale(boardNote, 455, 3, 2), OGP.SOFT);
+
+  const board = model.board || Array.from({ length: SIZE }, () => Array.from({ length: SIZE }, () => null));
+  board.forEach((row, r) => row.forEach((cell, c) => drawOgpTile(raster, cell, r, c)));
+  return encodeIndexedPng(width, height, raster.pixels);
+}
+
 async function handleCreateReplay(request, env) {
   if (!isAllowedRequestOrigin(request, env)) return errorResponse(request, env, 403, "forbidden_origin");
   if (!request.headers.get("Content-Type")?.toLowerCase().includes("application/json")) {
@@ -710,21 +1092,36 @@ async function handleGetReplayLanding(request, env, id) {
   const record = await replayRecord(env, id, 300);
   if (!record?.payload) return htmlResponse(replayNotFoundHtml(id), 404, { "Cache-Control": "no-store" });
 
-  const shareUrl = new URL(request.url).toString();
+  const shareUrl = canonicalAbsoluteUrl(env, `/r/${id}`);
   const gameUrl = replayGameUrl(env, id);
-  const imageUrl = absoluteUrl(request, `/r/${id}/og.svg`);
-  return htmlResponse(replayLandingHtml(replayModel(record, true), { shareUrl, gameUrl, imageUrl }), 200, {
+  const imageUrl = canonicalAbsoluteUrl(env, `/r/${id}/og.png`);
+  return htmlResponse(replayLandingHtml(replayModel(record, true), { shareUrl, gameUrl, imageUrl, imageType: "image/png" }), 200, {
     "Cache-Control": "public, max-age=300",
   });
 }
 
-async function handleGetReplayOgpImage(request, env, id) {
-  if (!ID_RE.test(id)) return svgResponse(replayOgpSvg(replayModel(null)), 400, { "Cache-Control": "no-store" });
+async function handleGetReplayOgpImage(request, env, id, imageType) {
+  if (!ID_RE.test(id)) {
+    return imageType === "svg"
+      ? svgResponse(replayOgpSvg(replayModel(null)), 400, { "Cache-Control": "no-store" })
+      : pngResponse(replayOgpPng(replayModel(null)), 400, { "Cache-Control": "no-store" });
+  }
 
   const record = await replayRecord(env, id, 3600);
-  if (!record?.payload) return svgResponse(replayOgpSvg(replayModel(null)), 404, { "Cache-Control": "no-store" });
+  if (!record?.payload) {
+    return imageType === "svg"
+      ? svgResponse(replayOgpSvg(replayModel(null)), 404, { "Cache-Control": "no-store" })
+      : pngResponse(replayOgpPng(replayModel(null)), 404, { "Cache-Control": "no-store" });
+  }
 
-  return svgResponse(replayOgpSvg(replayModel(record, true)), 200, {
+  const model = replayModel(record, true);
+  if (imageType === "svg") {
+    return svgResponse(replayOgpSvg(model), 200, {
+      "Cache-Control": "public, max-age=3600",
+    });
+  }
+
+  return pngResponse(replayOgpPng(model), 200, {
     "Cache-Control": "public, max-age=3600",
   });
 }
@@ -735,13 +1132,16 @@ function routeApiReplayId(pathname) {
 }
 
 function routeReplayShare(pathname) {
-  const match = pathname.match(/^\/r\/([^/]+)(?:\/(og\.svg))?$/);
+  const match = pathname.match(/^\/r\/([^/]+)(?:\/(og\.(svg|png)))?$/);
   if (!match) return null;
-  return { id: match[1], image: match[2] === "og.svg" };
+  return { id: match[1], image: match[3] || null };
 }
 
 export default {
   async fetch(request, env) {
+    const redirect = legacyWorkerRedirect(request, env);
+    if (redirect) return redirect;
+
     if (request.method === "OPTIONS") {
       if (!isAllowedRequestOrigin(request, env)) return new Response(null, { status: 403 });
       return new Response(null, { status: 204, headers: corsHeaders(request, env) });
@@ -749,9 +1149,9 @@ export default {
 
     const url = new URL(request.url);
     const shareRoute = routeReplayShare(url.pathname);
-    if (request.method === "GET" && shareRoute) {
+    if ((request.method === "GET" || request.method === "HEAD") && shareRoute) {
       return shareRoute.image
-        ? handleGetReplayOgpImage(request, env, shareRoute.id)
+        ? handleGetReplayOgpImage(request, env, shareRoute.id, shareRoute.image)
         : handleGetReplayLanding(request, env, shareRoute.id);
     }
 
@@ -766,6 +1166,8 @@ export default {
     if (request.method === "GET" && replayId) {
       return handleGetReplay(request, env, replayId);
     }
+
+    if (request.method === "GET" && env.ASSETS) return env.ASSETS.fetch(request);
 
     return errorResponse(request, env, 404, "not_found");
   },

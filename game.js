@@ -26,7 +26,7 @@ const REPLAY_SHARE_PREFIX = "snr1";
 const REPLAY_SHARE_LEGACY_PREFIXES = ["snr1."];
 const REPLAY_SHARE_SERVER_PREFIX = "srv1";
 const REPLAY_SHARE_SERVER_ID_RE = /^[A-Za-z0-9_-]{16}$/;
-const REPLAY_SHARE_API_BASE = "https://supernova-replay-api.tonosaki-shuntaro.workers.dev/v1";
+const REPLAY_SHARE_API_BASE = "https://supernova.tonochan.jp/v1";
 const REPLAY_SHARE_LOCAL_API_BASE = "http://127.0.0.1:8787/v1";
 const RULES_VERSION = 1;
 
@@ -78,7 +78,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-13 00:44 JST";
+const BUILD_VERSION = "2026-08-13 14:40 JST";
 let lang =
   localStorage.getItem(LANG_KEY) ||
   ((navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en");
@@ -1139,6 +1139,7 @@ function decodeReplayShare(payload) {
 function replayShareApiBase() {
   const host = window.location.hostname;
   if (host === "localhost" || host === "127.0.0.1") return REPLAY_SHARE_LOCAL_API_BASE;
+  if (host === "supernova.tonochan.jp") return `${window.location.origin}/v1`;
   return REPLAY_SHARE_API_BASE;
 }
 

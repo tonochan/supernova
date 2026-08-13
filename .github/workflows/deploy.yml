@@ -1,6 +1,6 @@
 name: Deploy to GitHub Pages
 
-# main → サイトのルート、beta → /beta/ サブパスに配信する。
+# main → 旧URL互換bridge、beta → /beta/ サブパスに配信する。
 # 配信の実体は gh-pages ブランチ(Pagesの配信元に設定)。
 on:
   push:
@@ -22,9 +22,9 @@ jobs:
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: .
+          publish_dir: ${{ github.ref_name == 'main' && 'compat-pages' || '.' }}
           # beta ブランチは /beta/ に、main はルートに置く
           destination_dir: ${{ github.ref_name == 'beta' && 'beta' || '' }}
           # ルート配信時に beta/ を消さない(逆も同様)
           keep_files: true
-          exclude_assets: '.github,.gitignore,workers'
+          exclude_assets: '.github,.gitignore,workers,docs,tools,dist,static-replays,static-replays-hybrid'
