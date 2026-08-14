@@ -300,6 +300,10 @@ async function createAppPage(debuggingPort, bridgeOrigin, appOrigin, bridgeUrl, 
     ${overrideBridge}
     window.__SUPERNOVA_MIGRATION_SOURCE_ORIGIN = ${JSON.stringify(bridgeOrigin)};
     window.__SUPERNOVA_MIGRATION_TARGET_ORIGIN = ${JSON.stringify(appOrigin)};
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("supernova-")) localStorage.removeItem(key);
+    }
     for (const [key, value] of Object.entries(${JSON.stringify(setupStorage)})) {
       localStorage.setItem(key, value);
     }
@@ -316,7 +320,8 @@ async function runImport(page) {
   `);
 }
 
-async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin, seedBridgeUrl, appBridgeUrl = seedBridgeUrl) {
+async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin, seedBridgeUrl, appBridgeUrl = seedBridgeUrl, options = {}) {
+  const testLang = options.lang || "en";
   await seedOldStorage(debuggingPort, bridgeOrigin, seedBridgeUrl, {
     "supernova-best": "9999",
     "supernova-found": JSON.stringify([1, 79]),
@@ -325,12 +330,13 @@ async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin, seedBridg
       { id: "old-replay", savedAt: "2026-01-02T00:00:00.000Z", replay: sampleReplay(777) },
     ]),
     "supernova-game-state": JSON.stringify(sampleGameState(222, "2026-02-01T00:00:00.000Z")),
-    "supernova-lang": "ja",
+    "supernova-lang": testLang,
   });
 
   const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin, appBridgeUrl, {
     "supernova-best": "12000",
     "supernova-found": JSON.stringify([1, 2]),
+    "supernova-lang": testLang,
   });
   await page.evaluate(`localStorage.setItem("supernova-game-state", ${JSON.stringify(JSON.stringify(sampleGameState(333, "2026-03-01T00:00:00.000Z")))})`);
   await runImport(page);
@@ -344,9 +350,11 @@ async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin, seedBridg
       button: document.querySelector('#retry')?.textContent || "",
     }))()
   `);
+  const expectedStatus = testLang === "ja" ? /移行が完了しました/ : /Done/;
+  const expectedButton = testLang === "ja" ? "閉じる" : "Close";
   assert(Date.now() - visibleStartedAt >= 2000, "completion screen was not held long enough to read");
-  assert(/Done/.test(popupState.status), "completion screen did not remain visible");
-  assert(popupState.button === "Close", "completion screen did not offer an explicit close action");
+  assert(expectedStatus.test(popupState.status), "completion screen did not use the expected language");
+  assert(popupState.button === expectedButton, "completion screen did not offer a localized close action");
   await popup.close();
 
   const storage = await page.evaluate(`
@@ -357,6 +365,7 @@ async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin, seedBridg
       history: JSON.parse(localStorage.getItem("supernova-replay-history") || "[]"),
       state: JSON.parse(localStorage.getItem("supernova-game-state") || "null"),
       lang: localStorage.getItem("supernova-lang"),
+      done: JSON.parse(localStorage.getItem("supernova-local-data-migration-done") || "null"),
     }))()
   `);
 
@@ -365,19 +374,49 @@ async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin, seedBridg
   assert(storage.replay?.final?.score === 777, "last replay was not imported");
   assert(storage.history.length === 1 && storage.history[0].id === "old-replay", "replay history was not imported");
   assert(storage.state?.score === 333, "newer in-progress game state was overwritten");
-  assert(storage.lang === "ja", "language setting was not imported");
+  assert(storage.lang === testLang, "language setting changed unexpectedly");
+  assert(storage.done?.schemaVersion === 1, "migration completion state was not saved");
+  const promptState = await page.evaluate(`
+    (() => {
+      document.querySelector('#migration-close').click();
+      const button = document.querySelector('#migration-btn');
+      const modal = document.querySelector('#migration-modal');
+      const hiddenAfterClose = button.classList.contains('hidden') && modal.classList.contains('hidden');
+      button.click();
+      return {
+        hiddenAfterClose,
+        title: document.querySelector('#migration-title')?.textContent || "",
+        text: document.querySelector('#migration-text')?.textContent || "",
+        startHidden: document.querySelector('#migration-start')?.classList.contains('hidden') || false,
+      };
+    })()
+  `);
+  const promptPattern = testLang === "ja" ? /旧データを移しますか/ : /Move saved data/;
+  const donePattern = testLang === "ja" ? /移行は完了/ : /import complete/i;
+  assert(promptState.hiddenAfterClose, "migration entry point was still visible after completion");
+  assert(!promptPattern.test(promptState.title), "completed migration reopened the initial prompt title");
+  assert(donePattern.test(promptState.title), "completed migration did not reopen the completion state");
+  assert(promptState.startHidden, "completed migration still showed the import start button");
   await page.close();
 }
 
 async function testNoData(debuggingPort, bridgeOrigin, appOrigin, seedBridgeUrl, appBridgeUrl = seedBridgeUrl) {
   await seedOldStorage(debuggingPort, bridgeOrigin, seedBridgeUrl, {});
-  const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin, appBridgeUrl);
+  const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin, appBridgeUrl, {
+    "supernova-lang": "en",
+  });
   await runImport(page);
   await page.waitFor(`/No old saved data|見つかりません/.test(document.querySelector('#migration-status')?.textContent || '')`);
   const popup = await waitForMigrationBridgePage(debuggingPort, bridgeOrigin);
   await delay(1500);
-  const popupText = await popup.evaluate("document.querySelector('#status')?.textContent || ''");
-  assert(/Done/.test(popupText), "no-data completion screen did not remain visible");
+  const popupState = await popup.evaluate(`
+    (() => ({
+      status: document.querySelector('#status')?.textContent || '',
+      button: document.querySelector('#retry')?.textContent || '',
+    }))()
+  `);
+  assert(/Done/.test(popupState.status), "no-data completion screen did not remain visible");
+  assert(popupState.button === "Close", "no-data completion screen did not keep the close button");
   await popup.close();
   await page.close();
 }
@@ -399,7 +438,8 @@ async function main() {
         "https://tonochan.github.io",
         "https://supernova.tonochan.jp",
         `https://tonochan.github.io/supernova/migrate/?v=${Date.now()}`,
-        null
+        null,
+        { lang: "ja" }
       );
       console.log("production local data migration E2E passed");
     } finally {
@@ -421,7 +461,8 @@ async function main() {
   const bridgeUrl = `${bridge.origin}/migrate/?targetOrigin=${encodeURIComponent(app.origin)}`;
 
   try {
-    await testImportMerge(debuggingPort, bridge.origin, app.origin, bridgeUrl);
+    await testImportMerge(debuggingPort, bridge.origin, app.origin, bridgeUrl, bridgeUrl, { lang: "ja" });
+    await testImportMerge(debuggingPort, bridge.origin, app.origin, bridgeUrl, bridgeUrl, { lang: "en" });
     await testNoData(debuggingPort, bridge.origin, app.origin, bridgeUrl);
     await testPopupBlocked(debuggingPort, bridge.origin, app.origin, bridgeUrl);
     console.log("local data migration E2E passed");

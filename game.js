@@ -36,6 +36,7 @@ const LOCAL_DATA_MIGRATION_SCHEMA_VERSION = 1;
 const LOCAL_DATA_MIGRATION_SOURCE_ORIGIN = "https://tonochan.github.io";
 const LOCAL_DATA_MIGRATION_TARGET_ORIGIN = "https://supernova.tonochan.jp";
 const LOCAL_DATA_MIGRATION_MAX_CHARS = 5_000_000;
+const LOCAL_DATA_MIGRATION_DONE_KEY = "supernova-local-data-migration-done";
 
 const ELEMENTS = [
   "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
@@ -85,7 +86,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-14 10:35 JST";
+const BUILD_VERSION = "2026-08-14 14:16 JST";
 const LOCAL_DATA_MIGRATION_ALLOWED_KEYS = new Set([
   STORAGE_KEY,
   FOUND_KEY,
@@ -155,6 +156,9 @@ const STR = {
     migrationImported: (count) => `Imported ${count} item${count === 1 ? "" : "s"}.`,
     migrationFailed: "The saved data could not be imported.",
     migrationClosed: "The old site window closed before the import finished.",
+    migrationDoneTitle: "Old data import complete",
+    migrationDoneText: "This browser's old GitHub Pages data has already been checked. You do not need to import it again.",
+    migrationDoneStatus: "Import is complete.",
     historyScore: "Score",
     historyMax: "Max",
     historyMoves: "moves",
@@ -235,6 +239,9 @@ const STR = {
     migrationImported: (count) => `${count}件の保存データを取り込みました。`,
     migrationFailed: "保存データを取り込めませんでした。",
     migrationClosed: "取り込み完了前に旧サイトのウィンドウが閉じられました。",
+    migrationDoneTitle: "旧データの移行は完了しています",
+    migrationDoneText: "このブラウザのGitHub Pages版データは確認済みです。もう一度取り込む必要はありません。",
+    migrationDoneStatus: "移行は完了しています。",
     historyScore: "スコア",
     historyMax: "最大",
     historyMoves: "手",
@@ -1635,10 +1642,54 @@ function migrationTargetOrigin() {
 }
 
 function migrationBridgeUrl() {
-  if (window.__SUPERNOVA_MIGRATION_BRIDGE_URL) return window.__SUPERNOVA_MIGRATION_BRIDGE_URL;
-  const url = new URL("/supernova/migrate/", migrationSourceOrigin());
-  url.searchParams.set("v", BUILD_VERSION.replace(/\D/g, "").slice(0, 12) || String(Date.now()));
+  const override = window.__SUPERNOVA_MIGRATION_BRIDGE_URL;
+  const url = override
+    ? new URL(override, window.location.href)
+    : new URL("/supernova/migrate/", migrationSourceOrigin());
+  if (!override) url.searchParams.set("v", BUILD_VERSION.replace(/\D/g, "").slice(0, 12) || String(Date.now()));
+  url.searchParams.set("lang", lang);
   return url.toString();
+}
+
+function readLocalDataMigrationDone() {
+  try {
+    const record = JSON.parse(localStorage.getItem(LOCAL_DATA_MIGRATION_DONE_KEY) || "null");
+    if (
+      !record ||
+      record.schemaVersion !== LOCAL_DATA_MIGRATION_SCHEMA_VERSION ||
+      record.sourceOrigin !== migrationSourceOrigin() ||
+      record.targetOrigin !== migrationTargetOrigin()
+    ) {
+      return null;
+    }
+    return record;
+  } catch (_) {
+    return null;
+  }
+}
+
+function hasCompletedLocalDataMigration() {
+  return Boolean(readLocalDataMigrationDone());
+}
+
+function writeLocalDataMigrationDone(result) {
+  if (result?.failed) return false;
+  try {
+    localStorage.setItem(
+      LOCAL_DATA_MIGRATION_DONE_KEY,
+      JSON.stringify({
+        schemaVersion: LOCAL_DATA_MIGRATION_SCHEMA_VERSION,
+        sourceOrigin: migrationSourceOrigin(),
+        targetOrigin: migrationTargetOrigin(),
+        completedAt: new Date().toISOString(),
+        seen: Number(result?.seen) || 0,
+        updated: Number(result?.updated) || 0,
+      })
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function setMigrationStatus(text, kind = "") {
@@ -1656,15 +1707,31 @@ function clearMigrationTimers() {
 
 function finishMigration(statusText, kind = "strong") {
   migrationInProgress = false;
-  migrationStartEl.disabled = false;
+  migrationStartEl.disabled = hasCompletedLocalDataMigration();
   clearMigrationTimers();
   setMigrationStatus(statusText, kind);
 }
 
+function updateMigrationEntryPoint() {
+  migrationBtnEl.classList.toggle("hidden", hasCompletedLocalDataMigration());
+}
+
+function updateMigrationModalText() {
+  const s = STR[lang];
+  const completed = hasCompletedLocalDataMigration();
+  migrationTitleEl.textContent = completed ? s.migrationDoneTitle : s.migrationTitle;
+  migrationTextEl.textContent = completed ? s.migrationDoneText : s.migrationText;
+  migrationStartEl.textContent = s.migrationStart;
+  migrationStartEl.classList.toggle("hidden", completed);
+  migrationStartEl.disabled = completed || migrationInProgress;
+  migrationCloseEl.textContent = s.migrationClose;
+  if (completed && !migrationInProgress) setMigrationStatus(s.migrationDoneStatus, "strong");
+}
+
 function openMigrationModal() {
   migrationModalEl.classList.remove("hidden");
-  migrationStartEl.disabled = false;
-  setMigrationStatus("");
+  updateMigrationModalText();
+  if (!hasCompletedLocalDataMigration()) setMigrationStatus("");
 }
 
 function closeMigrationModal() {
@@ -1950,6 +2017,11 @@ function handleLocalDataMigrationMessage(event) {
     const keys = migrationMessageKeys(event.data, event.origin);
     const result = applyLocalDataMigration(keys);
     acknowledgeMigration(event, "ok", result);
+    if (!result.failed) {
+      writeLocalDataMigrationDone(result);
+      updateMigrationEntryPoint();
+      updateMigrationModalText();
+    }
     finishMigration(migrationResultLabel(result), result.updated ? "strong" : "");
   } catch (_) {
     acknowledgeMigration(event, "error");
@@ -2777,10 +2849,8 @@ function applyLang() {
   setText("last-replay-btn", s.lastReplay);
   setText("history-btn", s.history);
   setText("migration-btn", s.migrationBtn);
-  setText("migration-title", s.migrationTitle);
-  setText("migration-text", s.migrationText);
-  setText("migration-start", s.migrationStart);
-  setText("migration-close", s.migrationClose);
+  updateMigrationEntryPoint();
+  updateMigrationModalText();
   for (const id of ["hs1", "hs2", "hs3", "hs4", "hs5"]) {
     document.getElementById(id).innerHTML = s[id];
   }

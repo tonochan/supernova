@@ -16,12 +16,19 @@ origin directly.
 - The new app shows an "old data" import action on the title screen.
 - User action opens `https://tonochan.github.io/supernova/migrate/` as a
   top-level popup.
+- The popup receives the current UI language in `lang` and also falls back to
+  old-origin `supernova-lang` or browser language, so its completion text
+  matches the game language.
 - The old-origin page reads only SUPERNOVA-owned localStorage keys and sends
   them to the opener with `postMessage`.
 - The data is sent to the exact target origin only:
   `https://supernova.tonochan.jp`.
 - No saved data is placed in URL query strings, URL hashes, or server storage.
 - The old-origin data is never deleted automatically.
+- After a successful acknowledgement with no failed keys, the new origin saves
+  `supernova-local-data-migration-done` and hides the title-screen import entry
+  point. Reopening the modal internally shows a completion state instead of the
+  initial "move saved data?" prompt.
 
 ## Migrated Keys
 
@@ -62,8 +69,10 @@ The new origin validates:
 
 Popup blocked, no old data, corrupt data, oversized payload, and closed popup
 all show human-readable status. Success and no-data completion screens remain
-visible until the user explicitly closes the bridge window. Failure of the
-migration UI must not block the game itself.
+visible until the user explicitly closes the bridge window. Successful
+completion and no-data results are marked complete; popup blocked, corrupt
+data, oversized payload, and closed-window failures are not marked complete, so
+the user can retry. Failure of the migration UI must not block the game itself.
 
 ## Rollback
 

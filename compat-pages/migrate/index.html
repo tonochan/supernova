@@ -19,10 +19,10 @@ button{border:0;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;
 </head>
 <body>
 <main>
-<h1>SUPERNOVA data transfer</h1>
+<h1 id="title">SUPERNOVA data transfer</h1>
 <p id="status">Preparing saved data...</p>
 <button id="retry" type="button">Try again</button>
-<p class="muted">This page only reads SUPERNOVA data saved in this browser on the old GitHub Pages address.</p>
+<p class="muted" id="note">This page only reads SUPERNOVA data saved in this browser on the old GitHub Pages address.</p>
 </main>
 <script>
 (function () {
@@ -44,9 +44,41 @@ button{border:0;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;
 
   var statusEl = document.getElementById("status");
   var retryEl = document.getElementById("retry");
+  var titleEl = document.getElementById("title");
+  var noteEl = document.getElementById("note");
   var targetOrigin = resolveTargetOrigin();
+  var bridgeLang = resolveLang();
+  var STR = {
+    en: {
+      title: "SUPERNOVA data transfer",
+      preparing: "Preparing saved data...",
+      retry: "Try again",
+      close: "Close",
+      note: "This page only reads SUPERNOVA data saved in this browser on the old GitHub Pages address.",
+      openFromNewSite: "Open this window from the new SUPERNOVA site to transfer saved data.",
+      sending: "Sending saved data...",
+      noData: "No old saved data was found.",
+      done: "Done. You can return to SUPERNOVA.",
+      failed: "The new SUPERNOVA site could not import this data."
+    },
+    ja: {
+      title: "SUPERNOVA データ移行",
+      preparing: "保存データを確認しています...",
+      retry: "もう一度試す",
+      close: "閉じる",
+      note: "このページは、旧GitHub Pages版でこのブラウザに保存されたSUPERNOVAデータだけを読み取ります。",
+      openFromNewSite: "新しいSUPERNOVAサイトからこのウィンドウを開くと、保存データを移行できます。",
+      sending: "保存データを送っています...",
+      noData: "移行できる旧データは見つかりませんでした。",
+      done: "移行が完了しました。SUPERNOVAに戻れます。",
+      failed: "新しいSUPERNOVAサイトでこのデータを取り込めませんでした。"
+    }
+  };
+  var text = STR[bridgeLang];
   var finished = false;
   var attempts = 0;
+
+  applyLang();
 
   function resolveTargetOrigin() {
     var fallback = DEFAULT_TARGET_ORIGIN;
@@ -66,6 +98,32 @@ button{border:0;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;
 
   function isLocalHost(hostname) {
     return hostname === "127.0.0.1" || hostname === "localhost";
+  }
+
+  function validLang(value) {
+    return value === "ja" || value === "en" ? value : "";
+  }
+
+  function resolveLang() {
+    var params = new URLSearchParams(window.location.search);
+    var requested = validLang(params.get("lang"));
+    if (requested) return requested;
+    try {
+      var saved = validLang(localStorage.getItem("supernova-lang"));
+      if (saved) return saved;
+    } catch (_) {
+      /* noop */
+    }
+    return (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
+  }
+
+  function applyLang() {
+    document.documentElement.lang = bridgeLang;
+    document.title = text.title;
+    titleEl.textContent = text.title;
+    statusEl.textContent = text.preparing;
+    retryEl.textContent = text.retry;
+    noteEl.textContent = text.note;
   }
 
   function setStatus(text, isError) {
@@ -90,9 +148,9 @@ button{border:0;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;
   function postSavedData() {
     if (finished) return;
     retryEl.dataset.mode = "retry";
-    retryEl.textContent = "Try again";
+    retryEl.textContent = text.retry;
     if (!window.opener || window.opener.closed) {
-      setStatus("Open this window from the new SUPERNOVA site to transfer saved data.", true);
+      setStatus(text.openFromNewSite, true);
       return;
     }
 
@@ -122,7 +180,7 @@ button{border:0;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;
 
     window.opener.postMessage(payload, targetOrigin);
     attempts += 1;
-    setStatus(Object.keys(payload.keys).length ? "Sending saved data..." : "No old saved data was found.");
+    setStatus(Object.keys(payload.keys).length ? text.sending : text.noData);
     if (attempts < 6) setTimeout(postSavedData, 650);
   }
 
@@ -132,11 +190,11 @@ button{border:0;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;
     if (data.kind !== ACK_KIND || data.schemaVersion !== SCHEMA_VERSION) return;
     finished = true;
     if (data.status === "ok") {
-      setStatus("Done. You can return to SUPERNOVA.");
+      setStatus(text.done);
       retryEl.dataset.mode = "close";
-      retryEl.textContent = "Close";
+      retryEl.textContent = text.close;
     } else {
-      setStatus("The new SUPERNOVA site could not import this data.", true);
+      setStatus(text.failed, true);
     }
   });
 
