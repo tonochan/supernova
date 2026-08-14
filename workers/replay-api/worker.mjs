@@ -15,6 +15,7 @@ const REPLAY_QUERY_KEY = "replay";
 const DEFAULT_CANONICAL_ORIGIN = "https://supernova.tonochan.jp";
 const DEFAULT_GAME_BASE_URL = `${DEFAULT_CANONICAL_ORIGIN}/`;
 const LEGACY_WORKER_HOST = "supernova-replay-api.tonosaki-shuntaro.workers.dev";
+const OGP_IMAGE_VERSION = "20260814v2";
 const SIZE = 5;
 const RULES_VERSION = 1;
 const NOVA_AT = 26;
@@ -1668,7 +1669,7 @@ async function handleGetReplayLanding(request, env, id) {
 
   const shareUrl = canonicalAbsoluteUrl(env, `/r/${id}`);
   const gameUrl = replayGameUrl(env, id);
-  const imageUrl = canonicalAbsoluteUrl(env, `/r/${id}/og.png`);
+  const imageUrl = canonicalAbsoluteUrl(env, `/r/${id}/og.png?v=${OGP_IMAGE_VERSION}`);
   return htmlResponse(replayLandingHtml(replayModel(record, true), { shareUrl, gameUrl, imageUrl, imageType: "image/png" }), 200, {
     "Cache-Control": "public, max-age=300",
   });
