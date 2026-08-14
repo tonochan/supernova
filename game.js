@@ -85,7 +85,7 @@ const ELEMENT_NAMES_JA = [
 // ---------- 言語(ブラウザ設定でデフォルト判定、切替はlocalStorageに保存) ----------
 
 const LANG_KEY = "supernova-lang";
-const BUILD_VERSION = "2026-08-13 19:34 JST";
+const BUILD_VERSION = "2026-08-14 10:35 JST";
 const LOCAL_DATA_MIGRATION_ALLOWED_KEYS = new Set([
   STORAGE_KEY,
   FOUND_KEY,
@@ -1659,15 +1659,6 @@ function finishMigration(statusText, kind = "strong") {
   migrationStartEl.disabled = false;
   clearMigrationTimers();
   setMigrationStatus(statusText, kind);
-  if (migrationPopup && !migrationPopup.closed) {
-    setTimeout(() => {
-      try {
-        migrationPopup.close();
-      } catch (_) {
-        /* noop */
-      }
-    }, 900);
-  }
 }
 
 function openMigrationModal() {

@@ -196,9 +196,34 @@ class CdpPage {
     throw new Error(`Timed out waiting for ${expression}`);
   }
 
-  close() {
+  async close() {
+    try {
+      await this.send("Page.close");
+    } catch (_) {
+      /* noop */
+    }
     this.socket.close();
   }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForMigrationBridgePage(debuggingPort, bridgeOrigin, timeoutMs = 4000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const response = await fetch(`http://127.0.0.1:${debuggingPort}/json/list`);
+    const targets = await response.json();
+    const target = targets.find((item) =>
+      item.type === "page" &&
+      item.url.startsWith(`${bridgeOrigin}/migrate/`) &&
+      item.webSocketDebuggerUrl
+    );
+    if (target) return new CdpPage(target.webSocketDebuggerUrl);
+    await delay(100);
+  }
+  throw new Error("Migration bridge popup was not found");
 }
 
 function sampleBoard(value = 1, color = "red") {
@@ -259,7 +284,7 @@ async function seedOldStorage(debuggingPort, bridgeOrigin, bridgeUrl, values) {
       return true;
     })()
   `);
-  page.close();
+  await page.close();
 }
 
 async function createAppPage(debuggingPort, bridgeOrigin, appOrigin, bridgeUrl, setupStorage = {}) {
@@ -306,6 +331,19 @@ async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin, seedBridg
   await page.evaluate(`localStorage.setItem("supernova-game-state", ${JSON.stringify(JSON.stringify(sampleGameState(333, "2026-03-01T00:00:00.000Z")))})`);
   await runImport(page);
   await page.waitFor(`/取り込みました|Imported/.test(document.querySelector('#migration-status')?.textContent || '')`);
+  const popup = await waitForMigrationBridgePage(debuggingPort, bridgeOrigin);
+  const visibleStartedAt = Date.now();
+  await delay(2200);
+  const popupState = await popup.evaluate(`
+    (() => ({
+      status: document.querySelector('#status')?.textContent || "",
+      button: document.querySelector('#retry')?.textContent || "",
+    }))()
+  `);
+  assert(Date.now() - visibleStartedAt >= 2000, "completion screen was not held long enough to read");
+  assert(/Done/.test(popupState.status), "completion screen did not remain visible");
+  assert(popupState.button === "Close", "completion screen did not offer an explicit close action");
+  await popup.close();
 
   const storage = await page.evaluate(`
     (() => ({
@@ -324,7 +362,7 @@ async function testImportMerge(debuggingPort, bridgeOrigin, appOrigin, seedBridg
   assert(storage.history.length === 1 && storage.history[0].id === "old-replay", "replay history was not imported");
   assert(storage.state?.score === 333, "newer in-progress game state was overwritten");
   assert(storage.lang === "ja", "language setting was not imported");
-  page.close();
+  await page.close();
 }
 
 async function testNoData(debuggingPort, bridgeOrigin, appOrigin, seedBridgeUrl, appBridgeUrl = seedBridgeUrl) {
@@ -332,7 +370,12 @@ async function testNoData(debuggingPort, bridgeOrigin, appOrigin, seedBridgeUrl,
   const page = await createAppPage(debuggingPort, bridgeOrigin, appOrigin, appBridgeUrl);
   await runImport(page);
   await page.waitFor(`/No old saved data|見つかりません/.test(document.querySelector('#migration-status')?.textContent || '')`);
-  page.close();
+  const popup = await waitForMigrationBridgePage(debuggingPort, bridgeOrigin);
+  await delay(1500);
+  const popupText = await popup.evaluate("document.querySelector('#status')?.textContent || ''");
+  assert(/Done/.test(popupText), "no-data completion screen did not remain visible");
+  await popup.close();
+  await page.close();
 }
 
 async function testPopupBlocked(debuggingPort, bridgeOrigin, appOrigin, appBridgeUrl) {
@@ -340,7 +383,7 @@ async function testPopupBlocked(debuggingPort, bridgeOrigin, appOrigin, appBridg
   await page.evaluate("window.open = () => null");
   await runImport(page);
   await page.waitFor(`/could not open|開けません/.test(document.querySelector('#migration-status')?.textContent || '')`, 3000);
-  page.close();
+  await page.close();
 }
 
 async function main() {

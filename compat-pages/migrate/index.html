@@ -89,6 +89,8 @@ button{border:0;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;
 
   function postSavedData() {
     if (finished) return;
+    retryEl.dataset.mode = "retry";
+    retryEl.textContent = "Try again";
     if (!window.opener || window.opener.closed) {
       setStatus("Open this window from the new SUPERNOVA site to transfer saved data.", true);
       return;
@@ -131,19 +133,22 @@ button{border:0;border-radius:8px;background:#246bfe;color:#fff;font-weight:800;
     finished = true;
     if (data.status === "ok") {
       setStatus("Done. You can return to SUPERNOVA.");
-      setTimeout(function () {
-        try {
-          window.close();
-        } catch (_) {
-          /* noop */
-        }
-      }, 900);
+      retryEl.dataset.mode = "close";
+      retryEl.textContent = "Close";
     } else {
       setStatus("The new SUPERNOVA site could not import this data.", true);
     }
   });
 
   retryEl.addEventListener("click", function () {
+    if (retryEl.dataset.mode === "close") {
+      try {
+        window.close();
+      } catch (_) {
+        /* noop */
+      }
+      return;
+    }
     finished = false;
     attempts = 0;
     postSavedData();

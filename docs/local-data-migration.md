@@ -61,8 +61,9 @@ The new origin validates:
 - replay/game-state shape and rules version
 
 Popup blocked, no old data, corrupt data, oversized payload, and closed popup
-all show human-readable status. Failure of the migration UI must not block the
-game itself.
+all show human-readable status. Success and no-data completion screens remain
+visible until the user explicitly closes the bridge window. Failure of the
+migration UI must not block the game itself.
 
 ## Rollback
 
