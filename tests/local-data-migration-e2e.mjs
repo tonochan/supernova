@@ -212,12 +212,16 @@ function delay(ms) {
 
 async function waitForMigrationBridgePage(debuggingPort, bridgeOrigin, timeoutMs = 4000) {
   const started = Date.now();
+  const prefixes = [
+    `${bridgeOrigin}/migrate/`,
+    `${bridgeOrigin}/supernova/migrate/`,
+  ];
   while (Date.now() - started < timeoutMs) {
     const response = await fetch(`http://127.0.0.1:${debuggingPort}/json/list`);
     const targets = await response.json();
     const target = targets.find((item) =>
       item.type === "page" &&
-      item.url.startsWith(`${bridgeOrigin}/migrate/`) &&
+      prefixes.some((prefix) => item.url.startsWith(prefix)) &&
       item.webSocketDebuggerUrl
     );
     if (target) return new CdpPage(target.webSocketDebuggerUrl);
