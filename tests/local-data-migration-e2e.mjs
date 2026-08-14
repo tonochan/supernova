@@ -441,6 +441,27 @@ async function main() {
         null,
         { lang: "ja" }
       );
+      await testImportMerge(
+        debuggingPort,
+        "https://tonochan.github.io",
+        "https://supernova.tonochan.jp",
+        `https://tonochan.github.io/supernova/migrate/?v=${Date.now()}-en`,
+        null,
+        { lang: "en" }
+      );
+      await testNoData(
+        debuggingPort,
+        "https://tonochan.github.io",
+        "https://supernova.tonochan.jp",
+        `https://tonochan.github.io/supernova/migrate/?v=${Date.now()}-nodata`,
+        null
+      );
+      await testPopupBlocked(
+        debuggingPort,
+        "https://tonochan.github.io",
+        "https://supernova.tonochan.jp",
+        null
+      );
       console.log("production local data migration E2E passed");
     } finally {
       await new Promise((resolve) => {
