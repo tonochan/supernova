@@ -1,3 +1,5 @@
+import { OGP_FONT_ATLAS } from "./ogp-font-atlas.mjs";
+
 "use strict";
 
 const API_VERSION = 1;
@@ -18,6 +20,20 @@ const RULES_VERSION = 1;
 const NOVA_AT = 26;
 const HOLE_AT = 119;
 const COLORS = ["red", "yellow", "green", "blue"];
+const ELEMENT_NAMES = [
+  "Hydrogen", "Helium", "Lithium", "Beryllium", "Boron", "Carbon", "Nitrogen", "Oxygen", "Fluorine", "Neon",
+  "Sodium", "Magnesium", "Aluminium", "Silicon", "Phosphorus", "Sulfur", "Chlorine", "Argon", "Potassium", "Calcium",
+  "Scandium", "Titanium", "Vanadium", "Chromium", "Manganese", "Iron", "Cobalt", "Nickel", "Copper", "Zinc",
+  "Gallium", "Germanium", "Arsenic", "Selenium", "Bromine", "Krypton", "Rubidium", "Strontium", "Yttrium", "Zirconium",
+  "Niobium", "Molybdenum", "Technetium", "Ruthenium", "Rhodium", "Palladium", "Silver", "Cadmium", "Indium", "Tin",
+  "Antimony", "Tellurium", "Iodine", "Xenon", "Caesium", "Barium", "Lanthanum", "Cerium", "Praseodymium", "Neodymium",
+  "Promethium", "Samarium", "Europium", "Gadolinium", "Terbium", "Dysprosium", "Holmium", "Erbium", "Thulium", "Ytterbium",
+  "Lutetium", "Hafnium", "Tantalum", "Tungsten", "Rhenium", "Osmium", "Iridium", "Platinum", "Gold", "Mercury",
+  "Thallium", "Lead", "Bismuth", "Polonium", "Astatine", "Radon", "Francium", "Radium", "Actinium", "Thorium",
+  "Protactinium", "Uranium", "Neptunium", "Plutonium", "Americium", "Curium", "Berkelium", "Californium", "Einsteinium", "Fermium",
+  "Mendelevium", "Nobelium", "Lawrencium", "Rutherfordium", "Dubnium", "Seaborgium", "Bohrium", "Hassium", "Meitnerium", "Darmstadtium",
+  "Roentgenium", "Copernicium", "Nihonium", "Flerovium", "Moscovium", "Livermorium", "Tennessine", "Oganesson",
+];
 const COLOR_RAMP = {
   red: [[248, 172, 156], [222, 74, 58]],
   yellow: [[248, 212, 128], [230, 156, 26]],
@@ -877,6 +893,278 @@ function encodeIndexedPng(width, height, pixels) {
   ]);
 }
 
+function encodeRgbaPng(width, height, pixels) {
+  const ihdr = new Uint8Array(13);
+  ihdr.set(u32(width), 0);
+  ihdr.set(u32(height), 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+
+  const stride = width * 4;
+  const scanlines = new Uint8Array((stride + 1) * height);
+  for (let y = 0; y < height; y++) {
+    scanlines[y * (stride + 1)] = 0;
+    scanlines.set(pixels.slice(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
+  }
+
+  return concatBytes([
+    new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlibStore(scanlines)),
+    pngChunk("IEND"),
+  ]);
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clamp01(value) {
+  return clamp(value, 0, 1);
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function mixColor(a, b, t) {
+  return [
+    Math.round(lerp(a[0], b[0], t)),
+    Math.round(lerp(a[1], b[1], t)),
+    Math.round(lerp(a[2], b[2], t)),
+  ];
+}
+
+function colorAtStops(stops, t) {
+  const value = clamp01(t);
+  for (let i = 1; i < stops.length; i++) {
+    const prev = stops[i - 1];
+    const next = stops[i];
+    if (value <= next.at) {
+      const local = (value - prev.at) / Math.max(next.at - prev.at, 0.0001);
+      return mixColor(prev.color, next.color, clamp01(local));
+    }
+  }
+  return stops[stops.length - 1].color;
+}
+
+function colorWithAlpha(color, alpha) {
+  return [color[0], color[1], color[2], alpha];
+}
+
+function makeRgbaRaster(width, height) {
+  const pixels = new Uint8Array(width * height * 4);
+
+  function blendPixel(x, y, color, alpha = 1) {
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    if (ix < 0 || ix >= width || iy < 0 || iy >= height) return;
+    const srcA = clamp01(alpha * (color[3] === undefined ? 1 : color[3]));
+    if (srcA <= 0) return;
+    const i = (iy * width + ix) * 4;
+    const dstA = pixels[i + 3] / 255;
+    const outA = srcA + dstA * (1 - srcA);
+    if (outA <= 0) return;
+    pixels[i] = Math.round((color[0] * srcA + pixels[i] * dstA * (1 - srcA)) / outA);
+    pixels[i + 1] = Math.round((color[1] * srcA + pixels[i + 1] * dstA * (1 - srcA)) / outA);
+    pixels[i + 2] = Math.round((color[2] * srcA + pixels[i + 2] * dstA * (1 - srcA)) / outA);
+    pixels[i + 3] = Math.round(outA * 255);
+  }
+
+  function fillRect(x, y, w, h, color, alpha = 1) {
+    const x0 = Math.max(0, Math.floor(x));
+    const y0 = Math.max(0, Math.floor(y));
+    const x1 = Math.min(width, Math.ceil(x + w));
+    const y1 = Math.min(height, Math.ceil(y + h));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) blendPixel(px, py, color, alpha);
+    }
+  }
+
+  function fillGradientRect(x, y, w, h, stops, alpha = 1, axis = "y") {
+    const x0 = Math.max(0, Math.floor(x));
+    const y0 = Math.max(0, Math.floor(y));
+    const x1 = Math.min(width, Math.ceil(x + w));
+    const y1 = Math.min(height, Math.ceil(y + h));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        const t = axis === "x" ? (px - x) / Math.max(w, 1) : (py - y) / Math.max(h, 1);
+        blendPixel(px, py, colorAtStops(stops, t), alpha);
+      }
+    }
+  }
+
+  function roundedRectDistance(px, py, x, y, w, h, radius) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const qx = Math.abs(px - cx) - (w / 2 - radius);
+    const qy = Math.abs(py - cy) - (h / 2 - radius);
+    const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0));
+    const inside = Math.min(Math.max(qx, qy), 0);
+    return outside + inside - radius;
+  }
+
+  function fillRoundedRect(x, y, w, h, radius, color, alpha = 1) {
+    const x0 = Math.max(0, Math.floor(x - 1));
+    const y0 = Math.max(0, Math.floor(y - 1));
+    const x1 = Math.min(width, Math.ceil(x + w + 1));
+    const y1 = Math.min(height, Math.ceil(y + h + 1));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        const d = roundedRectDistance(px + 0.5, py + 0.5, x, y, w, h, radius);
+        const a = clamp01(0.5 - d);
+        if (a > 0) blendPixel(px, py, color, alpha * a);
+      }
+    }
+  }
+
+  function fillRoundedRectGradient(x, y, w, h, radius, colorAt, alpha = 1) {
+    const x0 = Math.max(0, Math.floor(x - 1));
+    const y0 = Math.max(0, Math.floor(y - 1));
+    const x1 = Math.min(width, Math.ceil(x + w + 1));
+    const y1 = Math.min(height, Math.ceil(y + h + 1));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        const d = roundedRectDistance(px + 0.5, py + 0.5, x, y, w, h, radius);
+        const a = clamp01(0.5 - d);
+        if (a > 0) blendPixel(px, py, colorAt((px - x) / w, (py - y) / h, px, py), alpha * a);
+      }
+    }
+  }
+
+  function strokeRoundedRect(x, y, w, h, radius, lineWidth, color, alpha = 1) {
+    const x0 = Math.max(0, Math.floor(x - lineWidth - 1));
+    const y0 = Math.max(0, Math.floor(y - lineWidth - 1));
+    const x1 = Math.min(width, Math.ceil(x + w + lineWidth + 1));
+    const y1 = Math.min(height, Math.ceil(y + h + lineWidth + 1));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        const d = roundedRectDistance(px + 0.5, py + 0.5, x, y, w, h, radius);
+        const outer = clamp01(0.5 - d);
+        const inner = clamp01(0.5 - (d + lineWidth));
+        const a = clamp01(outer - inner);
+        if (a > 0) blendPixel(px, py, color, alpha * a);
+      }
+    }
+  }
+
+  function fillRadial(cx, cy, radius, innerColor, outerColor, alpha = 1) {
+    const x0 = Math.max(0, Math.floor(cx - radius));
+    const y0 = Math.max(0, Math.floor(cy - radius));
+    const x1 = Math.min(width, Math.ceil(cx + radius));
+    const y1 = Math.min(height, Math.ceil(cy + radius));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        const t = Math.hypot(px + 0.5 - cx, py + 0.5 - cy) / radius;
+        if (t <= 1) blendPixel(px, py, mixColor(innerColor, outerColor, clamp01(t)), alpha * (1 - clamp01(t)));
+      }
+    }
+  }
+
+  function drawRing(cx, cy, radius, thickness, progress, trackColor, progressColor) {
+    const outer = radius + thickness / 2;
+    const inner = radius - thickness / 2;
+    const x0 = Math.max(0, Math.floor(cx - outer - 1));
+    const y0 = Math.max(0, Math.floor(cy - outer - 1));
+    const x1 = Math.min(width, Math.ceil(cx + outer + 1));
+    const y1 = Math.min(height, Math.ceil(cy + outer + 1));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        const dx = px + 0.5 - cx;
+        const dy = py + 0.5 - cy;
+        const dist = Math.hypot(dx, dy);
+        const edge = Math.min(clamp01(dist - inner + 0.5), clamp01(outer - dist + 0.5));
+        if (edge <= 0) continue;
+        const angle = (Math.atan2(dy, dx) + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
+        const color = angle <= clamp01(progress) * Math.PI * 2 ? progressColor : trackColor;
+        blendPixel(px, py, color, edge);
+      }
+    }
+  }
+
+  return {
+    width,
+    height,
+    pixels,
+    blendPixel,
+    fillRect,
+    fillGradientRect,
+    fillRoundedRect,
+    fillRoundedRectGradient,
+    strokeRoundedRect,
+    fillRadial,
+    drawRing,
+  };
+}
+
+const FONT_SIZES = Object.keys(OGP_FONT_ATLAS.sizes).map(Number).sort((a, b) => a - b);
+const FONT_ALPHA_CACHE = new Map();
+
+function nearestFontSize(size) {
+  return FONT_SIZES.reduce((best, candidate) =>
+    Math.abs(candidate - size) < Math.abs(best - size) ? candidate : best,
+  FONT_SIZES[0]);
+}
+
+function fontGlyph(size, char) {
+  const actualSize = nearestFontSize(size);
+  const sizeAtlas = OGP_FONT_ATLAS.sizes[actualSize];
+  return {
+    size: actualSize,
+    lineHeight: sizeAtlas.lineHeight,
+    glyph: sizeAtlas.glyphs[char] || sizeAtlas.glyphs[char.toUpperCase()] || sizeAtlas.glyphs[" "],
+  };
+}
+
+function glyphAlpha(glyph) {
+  if (FONT_ALPHA_CACHE.has(glyph.b)) return FONT_ALPHA_CACHE.get(glyph.b);
+  const binary = atob(glyph.b);
+  const alpha = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) alpha[i] = binary.charCodeAt(i);
+  FONT_ALPHA_CACHE.set(glyph.b, alpha);
+  return alpha;
+}
+
+function atlasTextWidth(text, size, letterSpacing = 0) {
+  let width = 0;
+  for (const char of String(text)) {
+    width += fontGlyph(size, char).glyph.a + letterSpacing;
+  }
+  return Math.max(0, width - letterSpacing);
+}
+
+function fitAtlasFontSize(text, maxWidth, sizes) {
+  const candidates = [...sizes].sort((a, b) => b - a);
+  for (const size of candidates) {
+    if (atlasTextWidth(text, size) <= maxWidth) return size;
+  }
+  return candidates[candidates.length - 1];
+}
+
+function drawAtlasText(raster, text, x, y, size, color, options = {}) {
+  const value = String(text);
+  const letterSpacing = options.letterSpacing || 0;
+  const width = atlasTextWidth(value, size, letterSpacing);
+  let cursor =
+    options.align === "center" ? x - width / 2 :
+      options.align === "right" ? x - width :
+        x;
+  const opacity = options.opacity === undefined ? 1 : options.opacity;
+  for (const char of value) {
+    const { glyph } = fontGlyph(size, char);
+    const alpha = glyphAlpha(glyph);
+    const left = Math.round(cursor);
+    const top = Math.round(y);
+    for (let gy = 0; gy < glyph.h; gy++) {
+      for (let gx = 0; gx < glyph.w; gx++) {
+        const a = alpha[gy * glyph.w + gx] / 255;
+        if (a > 0) raster.blendPixel(left + gx, top + gy, color, a * opacity);
+      }
+    }
+    cursor += glyph.a + letterSpacing;
+  }
+}
+
 function makeRaster(width, height, bg = OGP.BG) {
   const pixels = new Uint8Array(width * height);
   pixels.fill(bg);
@@ -983,33 +1271,218 @@ function drawOgpTile(raster, cell, r, c) {
   drawText(raster, symbol, x + cellSize / 2, y + 43 - Math.floor((7 * scale) / 2), scale, textColor, { align: "center" });
 }
 
-function replayOgpPng(model) {
-  const width = 1200;
-  const height = 630;
-  const raster = makeRaster(width, height);
+const PNG = {
+  W: 1200,
+  H: 630,
+  BOARD_X: 638,
+  BOARD_Y: 55,
+  BOARD_SIZE: 522,
+  BOARD_PAD: 22,
+  TILE: 88,
+  GAP: 9,
+};
+
+function rgbaTileBase(cell) {
+  if (!cell) return [26, 32, 56];
+  if (cell.value >= HOLE_AT) return [22, 13, 43];
+  if (cell.value >= NOVA_AT) return [255, 243, 214];
+  const [lo, hi] = COLOR_RAMP[cell.color] || COLOR_RAMP.red;
+  return mixColor(lo, hi, growthT(cell));
+}
+
+function rgbaTileText(cell) {
+  if (!cell) return [102, 112, 145];
+  if (cell.value >= HOLE_AT) return [232, 221, 255];
+  if (cell.value >= NOVA_AT) return [48, 37, 69];
+  return growthT(cell) > 0.55 ? [255, 255, 255] : [28, 35, 64];
+}
+
+function rgbaTileName(cell) {
+  if (!cell) return "";
+  if (cell.value >= HOLE_AT) return "Black hole";
+  return ELEMENT_NAMES[cell.value - 1] || "";
+}
+
+function sameReplayKey(a, b) {
+  return a && b && keyOfReplayCell(a) === keyOfReplayCell(b);
+}
+
+function tileRect(r, c) {
+  const x = PNG.BOARD_X + PNG.BOARD_PAD + c * (PNG.TILE + PNG.GAP);
+  const y = PNG.BOARD_Y + PNG.BOARD_PAD + r * (PNG.TILE + PNG.GAP);
+  return { x, y, w: PNG.TILE, h: PNG.TILE };
+}
+
+function drawOgpBackground(raster) {
+  raster.fillGradientRect(0, 0, PNG.W, PNG.H, [
+    { at: 0, color: [16, 20, 46] },
+    { at: 0.34, color: [28, 34, 73] },
+    { at: 0.58, color: [59, 52, 104] },
+    { at: 0.78, color: [122, 77, 116] },
+    { at: 0.94, color: [196, 114, 111] },
+    { at: 1, color: [232, 149, 109] },
+  ]);
+  raster.fillRadial(220, 620, 360, [138, 111, 232], [138, 111, 232], 0.24);
+  raster.fillRadial(960, 650, 340, [47, 214, 167], [47, 214, 167], 0.14);
+  raster.fillRadial(690, 660, 300, [245, 143, 124], [245, 143, 124], 0.16);
+  const stars = [
+    [92, 80, 1.4], [216, 42, 1], [344, 114, 1.6], [532, 62, 1.1], [726, 92, 1.4],
+    [942, 44, 1], [1088, 126, 1.5], [140, 224, 1], [462, 238, 1], [1030, 244, 1.2],
+  ];
+  for (const [x, y, r] of stars) raster.fillRadial(x, y, r * 3, [255, 247, 220], [255, 247, 220], 0.75);
+}
+
+function drawOgpFrame(raster, model) {
+  raster.fillRoundedRect(44, 38, 1112, 554, 30, [5, 8, 22], 0.18);
+  raster.fillRoundedRect(48, 42, 1104, 546, 28, [21, 27, 47], 0.74);
+  raster.strokeRoundedRect(48, 42, 1104, 546, 28, 1.5, [255, 255, 255], 0.14);
+
+  drawAtlasText(raster, "SUPERNOVA", 78, 78, 42, [247, 248, 255], { letterSpacing: 2 });
+  drawAtlasText(raster, "Replay", 82, 145, 22, [174, 185, 216]);
+
   const score = formatNumber(model.score);
-  const scoreScale = fitTextScale(score, 470, score.length > 9 ? 9 : 12, 5);
-  const maxText = `MAX ${maxTileLabel(model.maxTile)}`;
-  const boardNote = model.decodeFailed ? "BOARD PREVIEW UNAVAILABLE" : model.board ? "FINAL BOARD" : "REPLAY SUMMARY";
+  const scoreSize = fitAtlasFontSize(score, 492, [72, 64, 42, 34]);
+  drawAtlasText(raster, score, 78, 222, scoreSize, [255, 255, 255]);
+  drawAtlasText(raster, "points", 84, 328, 22, [174, 185, 216]);
 
-  raster.fillRect(0, 0, width, height, OGP.BG);
-  raster.fillRect(48, 48, 1104, 534, OGP.PANEL);
-  raster.strokeRect(48, 48, 1104, 534, OGP.STROKE, 3);
-  raster.fillRect(638, 55, 516, 522, OGP.EMPTY);
-  raster.strokeRect(638, 55, 516, 522, OGP.STROKE, 3);
+  raster.fillRoundedRect(78, 398, 470, 1.5, 1, [255, 255, 255], 0.16);
+  const maxText = `Max ${maxTileLabel(model.maxTile)}`;
+  drawAtlasText(raster, maxText, 84, 426, fitAtlasFontSize(maxText, 460, [28, 22, 18]), [247, 241, 220]);
+  drawAtlasText(raster, `${formatNumber(model.moves)} moves`, 84, 480, 22, [220, 227, 248]);
+  const boardNote = model.decodeFailed ? "Board preview unavailable" : model.board ? "Final board" : "Replay summary";
+  drawAtlasText(raster, boardNote, 84, 535, 18, [135, 147, 181]);
 
-  drawText(raster, "SUPERNOVA", 78, 82, 8, OGP.TEXT);
-  drawText(raster, "REPLAY", 82, 150, 4, OGP.MUTED);
-  drawText(raster, score, 78, 226, scoreScale, OGP.TEXT);
-  drawText(raster, "POINTS", 84, 335, 4, OGP.MUTED);
-  raster.fillRect(78, 394, 468, 3, OGP.STROKE);
-  drawText(raster, maxText, 84, 430, fitTextScale(maxText, 460, 4, 2), OGP.WARM);
-  drawText(raster, `${formatNumber(model.moves)} MOVES`, 84, 488, 4, OGP.TEXT);
-  drawText(raster, boardNote, 84, 540, fitTextScale(boardNote, 455, 3, 2), OGP.SOFT);
+  raster.fillRoundedRect(PNG.BOARD_X + 4, PNG.BOARD_Y + 10, PNG.BOARD_SIZE, PNG.BOARD_SIZE, 26, [3, 5, 12], 0.32);
+  raster.fillRoundedRect(PNG.BOARD_X, PNG.BOARD_Y, PNG.BOARD_SIZE, PNG.BOARD_SIZE, 22, [13, 18, 40], 0.63);
+  raster.strokeRoundedRect(PNG.BOARD_X, PNG.BOARD_Y, PNG.BOARD_SIZE, PNG.BOARD_SIZE, 22, 1.2, [255, 255, 255], 0.14);
+  for (let i = 1; i < SIZE; i++) {
+    const pos = PNG.BOARD_X + (PNG.BOARD_SIZE * i) / SIZE;
+    raster.fillRect(pos, PNG.BOARD_Y + 8, 1, PNG.BOARD_SIZE - 16, [255, 255, 255], 0.04);
+    const y = PNG.BOARD_Y + (PNG.BOARD_SIZE * i) / SIZE;
+    raster.fillRect(PNG.BOARD_X + 8, y, PNG.BOARD_SIZE - 16, 1, [255, 255, 255], 0.04);
+  }
+}
 
+function normalTileGradient(cell, nx, ny, px, py, rect) {
+  const base = rgbaTileBase(cell);
+  let out = base;
+  const topLight = clamp01(1 - ny * 2.2) * 0.16;
+  out = mixColor(out, [255, 255, 255], topLight);
+  const core = Math.hypot(px - (rect.x + rect.w * 0.5), py - (rect.y + rect.h * 0.36)) / (16 + 36 * growthT(cell));
+  out = mixColor(out, [255, 255, 255], clamp01(1 - core) * (0.12 + 0.54 * growthT(cell)));
+  const bottomShade = clamp01((ny - 0.68) / 0.32) * 0.16;
+  return mixColor(out, [0, 0, 0], bottomShade);
+}
+
+function novaTileGradient(nx, ny) {
+  const out = mixColor([255, 255, 255], [255, 233, 184], clamp01((nx + ny) / 1.7));
+  return mixColor(out, [255, 255, 255], clamp01(1 - ny * 3) * 0.16);
+}
+
+function holeTileGradient(nx, ny) {
+  const dx = nx - 0.5;
+  const dy = ny - 0.42;
+  const d = Math.hypot(dx, dy);
+  if (d < 0.38) return mixColor([4, 5, 14], [12, 8, 25], d / 0.38);
+  if (d < 0.68) return mixColor([12, 8, 25], [24, 15, 46], (d - 0.38) / 0.3);
+  return mixColor([24, 15, 46], [59, 28, 77], clamp01((d - 0.68) / 0.4));
+}
+
+function drawTileConnectors(raster, board) {
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const cell = board[r][c];
+      if (!cell) continue;
+      const rect = tileRect(r, c);
+      const fill = rgbaTileBase(cell);
+      if (sameReplayKey(cell, board[r]?.[c + 1])) {
+        raster.fillRoundedRect(rect.x + rect.w - 6, rect.y + 4, PNG.GAP + 12, rect.h - 8, 8, fill, 0.95);
+      }
+      if (sameReplayKey(cell, board[r + 1]?.[c])) {
+        raster.fillRoundedRect(rect.x + 4, rect.y + rect.h - 6, rect.w - 8, PNG.GAP + 12, 8, fill, 0.95);
+      }
+      if (sameReplayKey(cell, board[r + 1]?.[c + 1]) && sameReplayKey(cell, board[r]?.[c + 1]) && sameReplayKey(cell, board[r + 1]?.[c])) {
+        raster.fillRoundedRect(rect.x + rect.w - 6, rect.y + rect.h - 6, PNG.GAP + 12, PNG.GAP + 12, 5, fill, 0.95);
+      }
+    }
+  }
+}
+
+function drawSmoothOgpTile(raster, cell, r, c) {
+  const rect = tileRect(r, c);
+  const text = rgbaTileText(cell);
+  const symbol = tileSymbol(cell);
+  const name = rgbaTileName(cell);
+
+  if (cell?.value >= HOLE_AT) {
+    raster.fillRadial(rect.x + rect.w / 2, rect.y + rect.h / 2, 58, [255, 150, 80], [154, 124, 248], 0.22);
+  } else if (cell?.value >= NOVA_AT) {
+    raster.fillRadial(rect.x + rect.w / 2, rect.y + rect.h / 2, 56, [255, 233, 170], [255, 233, 170], 0.26);
+  }
+
+  raster.fillRoundedRect(rect.x + 3, rect.y + 5, rect.w, rect.h, 13, [3, 5, 12], 0.28);
+  raster.fillRoundedRectGradient(rect.x, rect.y, rect.w, rect.h, 13, (nx, ny, px, py) => {
+    if (!cell) return [26, 32, 56];
+    if (cell.value >= HOLE_AT) return holeTileGradient(nx, ny);
+    if (cell.value >= NOVA_AT) return novaTileGradient(nx, ny);
+    return normalTileGradient(cell, nx, ny, px, py, rect);
+  });
+  raster.strokeRoundedRect(
+    rect.x,
+    rect.y,
+    rect.w,
+    rect.h,
+    13,
+    2,
+    cell?.value >= HOLE_AT ? [154, 124, 248] : cell?.value >= NOVA_AT ? [215, 155, 41] : [255, 255, 255],
+    cell?.value >= NOVA_AT ? 0.52 : 0.22,
+  );
+  raster.fillRoundedRect(rect.x + 5, rect.y + 5, rect.w - 10, 34, 10, [255, 255, 255], cell?.value >= HOLE_AT ? 0.05 : 0.18);
+  raster.fillRoundedRect(rect.x + 5, rect.y + rect.h - 19, rect.w - 10, 14, 8, [0, 0, 0], cell?.value >= HOLE_AT ? 0.22 : 0.14);
+
+  if (cell && cell.value < HOLE_AT) {
+    const progress = cell.value >= NOVA_AT ? Math.min(cell.value / 118, 1) : Math.min(cell.value / NOVA_AT, 1);
+    raster.drawRing(
+      rect.x + rect.w / 2,
+      rect.y + rect.h * 0.48,
+      27,
+      4,
+      progress,
+      cell.value >= NOVA_AT ? [28, 35, 64, 0.14] : [255, 255, 255, 0.28],
+      cell.value >= NOVA_AT ? [201, 147, 31, 0.9] : [255, 255, 255, 0.9],
+    );
+    drawAtlasText(raster, formatNumber(cell.value), rect.x + 10, rect.y + 9, 12, text, { opacity: 0.65 });
+  }
+
+  const symbolSize = fitAtlasFontSize(symbol, rect.w - 18, symbol.length <= 2 ? [42, 34, 28] : [34, 28, 22, 18]);
+  const symbolY = rect.y + (symbol.length <= 2 ? 26 : 29);
+  if (cell?.value >= HOLE_AT) {
+    drawAtlasText(raster, symbol, rect.x + rect.w / 2 + 1, symbolY + 1, symbolSize, [0, 0, 0], { align: "center", opacity: 0.35 });
+    drawAtlasText(raster, symbol, rect.x + rect.w / 2, symbolY, symbolSize, text, { align: "center", opacity: 0.96 });
+  } else {
+    if (growthT(cell || { value: 1 }) > 0.55) {
+      drawAtlasText(raster, symbol, rect.x + rect.w / 2 + 1, symbolY + 2, symbolSize, [0, 0, 0], { align: "center", opacity: 0.26 });
+    }
+    drawAtlasText(raster, symbol, rect.x + rect.w / 2, symbolY, symbolSize, text, { align: "center" });
+  }
+
+  if (name) {
+    const nameSize = fitAtlasFontSize(name, rect.w - 12, [12, 10]);
+    drawAtlasText(raster, name, rect.x + rect.w / 2, rect.y + rect.h - 22, nameSize, text, {
+      align: "center",
+      opacity: 0.72,
+    });
+  }
+}
+
+function replayOgpPng(model) {
+  const raster = makeRgbaRaster(PNG.W, PNG.H);
   const board = model.board || Array.from({ length: SIZE }, () => Array.from({ length: SIZE }, () => null));
-  board.forEach((row, r) => row.forEach((cell, c) => drawOgpTile(raster, cell, r, c)));
-  return encodeIndexedPng(width, height, raster.pixels);
+  drawOgpBackground(raster);
+  drawOgpFrame(raster, model);
+  drawTileConnectors(raster, board);
+  board.forEach((row, r) => row.forEach((cell, c) => drawSmoothOgpTile(raster, cell, r, c)));
+  return encodeRgbaPng(PNG.W, PNG.H, raster.pixels);
 }
 
 async function handleCreateReplay(request, env) {
