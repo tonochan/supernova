@@ -1274,13 +1274,99 @@ function drawOgpTile(raster, cell, r, c) {
 const PNG = {
   W: 1200,
   H: 630,
-  BOARD_X: 638,
-  BOARD_Y: 55,
+  BOARD_X: 632,
+  BOARD_Y: 54,
   BOARD_SIZE: 522,
-  BOARD_PAD: 22,
-  TILE: 88,
-  GAP: 9,
+  BOARD_PAD: 14,
+  TILE: 94,
+  GAP: 6,
 };
+
+const GAME_STYLE = {
+  ink: [28, 35, 64],
+  paper: [253, 246, 233],
+  gold: [244, 201, 93],
+  soft: [220, 227, 248],
+  boardBg: [13, 18, 40],
+  boardShadow: [5, 8, 22],
+  logo: [
+    { text: "S", color: [253, 246, 233] },
+    { text: "U", color: [253, 246, 233] },
+    { text: "P", color: [253, 246, 233] },
+    { text: "E", color: [253, 246, 233] },
+    { text: "R", color: [253, 246, 233] },
+    { text: "N", color: [245, 143, 124] },
+    { text: "O", color: [244, 201, 93] },
+    { text: "V", color: [76, 217, 164] },
+    { text: "A", color: [111, 158, 242] },
+  ],
+};
+
+function segmentedAtlasWidth(parts, size, letterSpacing = 0) {
+  let width = 0;
+  for (const part of parts) {
+    width += atlasTextWidth(part.text, size) + letterSpacing;
+  }
+  return Math.max(0, width - letterSpacing);
+}
+
+function drawSegmentedAtlasText(raster, parts, x, y, size, options = {}) {
+  const letterSpacing = options.letterSpacing || 0;
+  const width = segmentedAtlasWidth(parts, size, letterSpacing);
+  let cursor =
+    options.align === "center" ? x - width / 2 :
+      options.align === "right" ? x - width :
+        x;
+  for (const part of parts) {
+    drawAtlasText(raster, part.text, cursor, y, size, options.color || part.color, {
+      opacity: options.opacity,
+    });
+    cursor += atlasTextWidth(part.text, size) + letterSpacing;
+  }
+}
+
+function drawAtlasTextShadow(raster, text, x, y, size, color, options = {}) {
+  const shadowOpacity = options.shadowOpacity ?? 0.45;
+  const letterSpacing = options.letterSpacing || 0;
+  if (shadowOpacity > 0) {
+    drawAtlasText(raster, text, x, y + 3, size, [0, 0, 0], {
+      ...options,
+      letterSpacing,
+      opacity: shadowOpacity,
+    });
+    drawAtlasText(raster, text, x + 1, y + 1, size, [0, 0, 0], {
+      ...options,
+      letterSpacing,
+      opacity: shadowOpacity * 0.45,
+    });
+  }
+  drawAtlasText(raster, text, x, y, size, color, options);
+}
+
+function drawGameLogo(raster, x, y, size) {
+  const letterSpacing = Math.round(size * 0.08);
+  drawSegmentedAtlasText(raster, GAME_STYLE.logo, x, y + 3, size, {
+    color: [0, 0, 0],
+    letterSpacing,
+    opacity: 0.45,
+  });
+  drawSegmentedAtlasText(raster, GAME_STYLE.logo, x + 1, y + 1, size, {
+    color: [0, 0, 0],
+    letterSpacing,
+    opacity: 0.22,
+  });
+  drawSegmentedAtlasText(raster, GAME_STYLE.logo, x, y, size, { letterSpacing });
+}
+
+function fitAtlasText(text, maxWidth, size) {
+  const value = String(text);
+  if (atlasTextWidth(value, size) <= maxWidth) return value;
+  let clipped = value;
+  while (clipped.length > 1 && atlasTextWidth(`${clipped}.`, size) > maxWidth) {
+    clipped = clipped.slice(0, -1);
+  }
+  return `${clipped}.`;
+}
 
 function rgbaTileBase(cell) {
   if (!cell) return [26, 32, 56];
@@ -1294,7 +1380,7 @@ function rgbaTileText(cell) {
   if (!cell) return [102, 112, 145];
   if (cell.value >= HOLE_AT) return [232, 221, 255];
   if (cell.value >= NOVA_AT) return [48, 37, 69];
-  return growthT(cell) > 0.55 ? [255, 255, 255] : [28, 35, 64];
+  return growthT(cell) > 0.55 ? [255, 255, 255] : GAME_STYLE.ink;
 }
 
 function rgbaTileName(cell) {
@@ -1333,27 +1419,39 @@ function drawOgpBackground(raster) {
 }
 
 function drawOgpFrame(raster, model) {
-  raster.fillRoundedRect(44, 38, 1112, 554, 30, [5, 8, 22], 0.18);
-  raster.fillRoundedRect(48, 42, 1104, 546, 28, [21, 27, 47], 0.74);
-  raster.strokeRoundedRect(48, 42, 1104, 546, 28, 1.5, [255, 255, 255], 0.14);
+  raster.fillRadial(190, 320, 530, GAME_STYLE.boardShadow, GAME_STYLE.boardShadow, 0.18);
 
-  drawAtlasText(raster, "SUPERNOVA", 78, 78, 42, [247, 248, 255], { letterSpacing: 2 });
-  drawAtlasText(raster, "Replay", 82, 145, 22, [174, 185, 216]);
+  drawGameLogo(raster, 74, 78, 42);
+  drawAtlasTextShadow(raster, "Replay", 82, 145, 18, GAME_STYLE.paper, {
+    letterSpacing: 1,
+    opacity: 0.62,
+    shadowOpacity: 0.24,
+  });
 
   const score = formatNumber(model.score);
   const scoreSize = fitAtlasFontSize(score, 492, [72, 64, 42, 34]);
-  drawAtlasText(raster, score, 78, 222, scoreSize, [255, 255, 255]);
-  drawAtlasText(raster, "points", 84, 328, 22, [174, 185, 216]);
+  drawAtlasText(raster, "SCORE", 82, 198, 14, GAME_STYLE.paper, {
+    letterSpacing: 2,
+    opacity: 0.64,
+  });
+  drawAtlasTextShadow(raster, score, 78, 228, scoreSize, GAME_STYLE.paper, {
+    shadowOpacity: 0.35,
+  });
+  drawAtlasText(raster, "points", 84, 330, 18, GAME_STYLE.soft, { opacity: 0.68 });
 
-  raster.fillRoundedRect(78, 398, 470, 1.5, 1, [255, 255, 255], 0.16);
+  raster.fillRoundedRect(78, 392, 470, 1.5, 1, [255, 255, 255], 0.16);
   const maxText = `Max ${maxTileLabel(model.maxTile)}`;
-  drawAtlasText(raster, maxText, 84, 426, fitAtlasFontSize(maxText, 460, [28, 22, 18]), [247, 241, 220]);
-  drawAtlasText(raster, `${formatNumber(model.moves)} moves`, 84, 480, 22, [220, 227, 248]);
+  drawAtlasTextShadow(raster, maxText, 84, 424, fitAtlasFontSize(maxText, 460, [28, 22, 18]), GAME_STYLE.paper, {
+    shadowOpacity: 0.28,
+  });
+  raster.fillRoundedRect(78, 484, 196, 55, 14, GAME_STYLE.boardBg, 0.58);
+  raster.strokeRoundedRect(78, 484, 196, 55, 14, 1, [255, 255, 255], 0.14);
+  drawAtlasText(raster, `${formatNumber(model.moves)} moves`, 102, 501, 18, GAME_STYLE.gold);
   const boardNote = model.decodeFailed ? "Board preview unavailable" : model.board ? "Final board" : "Replay summary";
-  drawAtlasText(raster, boardNote, 84, 535, 18, [135, 147, 181]);
+  drawAtlasText(raster, boardNote, 304, 502, 18, GAME_STYLE.soft, { opacity: 0.56 });
 
-  raster.fillRoundedRect(PNG.BOARD_X + 4, PNG.BOARD_Y + 10, PNG.BOARD_SIZE, PNG.BOARD_SIZE, 26, [3, 5, 12], 0.32);
-  raster.fillRoundedRect(PNG.BOARD_X, PNG.BOARD_Y, PNG.BOARD_SIZE, PNG.BOARD_SIZE, 22, [13, 18, 40], 0.63);
+  raster.fillRoundedRect(PNG.BOARD_X + 8, PNG.BOARD_Y + 18, PNG.BOARD_SIZE, PNG.BOARD_SIZE, 24, GAME_STYLE.boardShadow, 0.48);
+  raster.fillRoundedRect(PNG.BOARD_X, PNG.BOARD_Y, PNG.BOARD_SIZE, PNG.BOARD_SIZE, 20, GAME_STYLE.boardBg, 0.55);
   raster.strokeRoundedRect(PNG.BOARD_X, PNG.BOARD_Y, PNG.BOARD_SIZE, PNG.BOARD_SIZE, 22, 1.2, [255, 255, 255], 0.14);
   for (let i = 1; i < SIZE; i++) {
     const pos = PNG.BOARD_X + (PNG.BOARD_SIZE * i) / SIZE;
@@ -1366,11 +1464,9 @@ function drawOgpFrame(raster, model) {
 function normalTileGradient(cell, nx, ny, px, py, rect) {
   const base = rgbaTileBase(cell);
   let out = base;
-  const topLight = clamp01(1 - ny * 2.2) * 0.16;
-  out = mixColor(out, [255, 255, 255], topLight);
   const core = Math.hypot(px - (rect.x + rect.w * 0.5), py - (rect.y + rect.h * 0.36)) / (16 + 36 * growthT(cell));
-  out = mixColor(out, [255, 255, 255], clamp01(1 - core) * (0.12 + 0.54 * growthT(cell)));
-  const bottomShade = clamp01((ny - 0.68) / 0.32) * 0.16;
+  out = mixColor(out, [255, 255, 255], clamp01(1 - core) * (0.12 + 0.68 * growthT(cell)));
+  const bottomShade = clamp01((ny - 0.72) / 0.28) * 0.14;
   return mixColor(out, [0, 0, 0], bottomShade);
 }
 
@@ -1396,13 +1492,13 @@ function drawTileConnectors(raster, board) {
       const rect = tileRect(r, c);
       const fill = rgbaTileBase(cell);
       if (sameReplayKey(cell, board[r]?.[c + 1])) {
-        raster.fillRoundedRect(rect.x + rect.w - 6, rect.y + 4, PNG.GAP + 12, rect.h - 8, 8, fill, 0.95);
+        raster.fillRoundedRect(rect.x + rect.w - 4.5, rect.y + 3.5, PNG.GAP + 9, rect.h - 7, 6, fill, 0.98);
       }
       if (sameReplayKey(cell, board[r + 1]?.[c])) {
-        raster.fillRoundedRect(rect.x + 4, rect.y + rect.h - 6, rect.w - 8, PNG.GAP + 12, 8, fill, 0.95);
+        raster.fillRoundedRect(rect.x + 3.5, rect.y + rect.h - 4.5, rect.w - 7, PNG.GAP + 9, 6, fill, 0.98);
       }
       if (sameReplayKey(cell, board[r + 1]?.[c + 1]) && sameReplayKey(cell, board[r]?.[c + 1]) && sameReplayKey(cell, board[r + 1]?.[c])) {
-        raster.fillRoundedRect(rect.x + rect.w - 6, rect.y + rect.h - 6, PNG.GAP + 12, PNG.GAP + 12, 5, fill, 0.95);
+        raster.fillRoundedRect(rect.x + rect.w - 4.5, rect.y + rect.h - 4.5, PNG.GAP + 9, PNG.GAP + 9, 4, fill, 0.98);
       }
     }
   }
@@ -1420,7 +1516,8 @@ function drawSmoothOgpTile(raster, cell, r, c) {
     raster.fillRadial(rect.x + rect.w / 2, rect.y + rect.h / 2, 56, [255, 233, 170], [255, 233, 170], 0.26);
   }
 
-  raster.fillRoundedRect(rect.x + 3, rect.y + 5, rect.w, rect.h, 13, [3, 5, 12], 0.28);
+  raster.fillRoundedRect(rect.x, rect.y + 2, rect.w, rect.h, 13, GAME_STYLE.boardShadow, 0.24);
+  raster.fillRoundedRect(rect.x, rect.y + 5, rect.w, rect.h, 13, GAME_STYLE.boardShadow, 0.12);
   raster.fillRoundedRectGradient(rect.x, rect.y, rect.w, rect.h, 13, (nx, ny, px, py) => {
     if (!cell) return [26, 32, 56];
     if (cell.value >= HOLE_AT) return holeTileGradient(nx, ny);
@@ -1433,29 +1530,32 @@ function drawSmoothOgpTile(raster, cell, r, c) {
     rect.w,
     rect.h,
     13,
-    2,
-    cell?.value >= HOLE_AT ? [154, 124, 248] : cell?.value >= NOVA_AT ? [215, 155, 41] : [255, 255, 255],
-    cell?.value >= NOVA_AT ? 0.52 : 0.22,
+    1.2,
+    cell?.value >= HOLE_AT ? [255, 150, 80] : cell?.value >= NOVA_AT ? [215, 155, 41] : [255, 255, 255],
+    cell?.value >= HOLE_AT ? 0.18 : cell?.value >= NOVA_AT ? 0.38 : 0.08,
   );
-  raster.fillRoundedRect(rect.x + 5, rect.y + 5, rect.w - 10, 34, 10, [255, 255, 255], cell?.value >= HOLE_AT ? 0.05 : 0.18);
-  raster.fillRoundedRect(rect.x + 5, rect.y + rect.h - 19, rect.w - 10, 14, 8, [0, 0, 0], cell?.value >= HOLE_AT ? 0.22 : 0.14);
 
   if (cell && cell.value < HOLE_AT) {
     const progress = cell.value >= NOVA_AT ? Math.min(cell.value / 118, 1) : Math.min(cell.value / NOVA_AT, 1);
     raster.drawRing(
       rect.x + rect.w / 2,
-      rect.y + rect.h * 0.48,
-      27,
-      4,
+      rect.y + rect.h * 0.46,
+      rect.w * 0.31,
+      5,
       progress,
       cell.value >= NOVA_AT ? [28, 35, 64, 0.14] : [255, 255, 255, 0.28],
       cell.value >= NOVA_AT ? [201, 147, 31, 0.9] : [255, 255, 255, 0.9],
     );
-    drawAtlasText(raster, formatNumber(cell.value), rect.x + 10, rect.y + 9, 12, text, { opacity: 0.65 });
+    drawAtlasText(raster, formatNumber(cell.value), rect.x + rect.w * 0.1, rect.y + rect.h * 0.07, 12, text, { opacity: 0.65 });
   }
 
-  const symbolSize = fitAtlasFontSize(symbol, rect.w - 18, symbol.length <= 2 ? [42, 34, 28] : [34, 28, 22, 18]);
-  const symbolY = rect.y + (symbol.length <= 2 ? 26 : 29);
+  const growthBoost = cell && cell.value < HOLE_AT ? 1 + 0.18 * growthT(cell) : 1;
+  const maxSymbolWidth = rect.w * 0.76;
+  const symbolCandidates = symbol.length <= 2
+    ? [Math.round(34 * growthBoost), 34, 28, 22]
+    : [28, 22, 18];
+  const symbolSize = fitAtlasFontSize(symbol, maxSymbolWidth, symbolCandidates);
+  const symbolY = rect.y + rect.h * 0.46 - symbolSize * 0.48;
   if (cell?.value >= HOLE_AT) {
     drawAtlasText(raster, symbol, rect.x + rect.w / 2 + 1, symbolY + 1, symbolSize, [0, 0, 0], { align: "center", opacity: 0.35 });
     drawAtlasText(raster, symbol, rect.x + rect.w / 2, symbolY, symbolSize, text, { align: "center", opacity: 0.96 });
@@ -1467,8 +1567,9 @@ function drawSmoothOgpTile(raster, cell, r, c) {
   }
 
   if (name) {
-    const nameSize = fitAtlasFontSize(name, rect.w - 12, [12, 10]);
-    drawAtlasText(raster, name, rect.x + rect.w / 2, rect.y + rect.h - 22, nameSize, text, {
+    const nameSize = fitAtlasFontSize(name, rect.w * 0.88, [10, 8]);
+    const fittedName = fitAtlasText(name, rect.w * 0.88, nameSize);
+    drawAtlasText(raster, fittedName, rect.x + rect.w / 2, rect.y + rect.h - 18, nameSize, text, {
       align: "center",
       opacity: 0.72,
     });
