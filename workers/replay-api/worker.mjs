@@ -15,7 +15,7 @@ const REPLAY_QUERY_KEY = "replay";
 const DEFAULT_CANONICAL_ORIGIN = "https://supernova.tonochan.jp";
 const DEFAULT_GAME_BASE_URL = `${DEFAULT_CANONICAL_ORIGIN}/`;
 const LEGACY_WORKER_HOST = "supernova-replay-api.tonosaki-shuntaro.workers.dev";
-const OGP_IMAGE_VERSION = "20260814v2";
+const OGP_IMAGE_VERSION = "20260815v1";
 const SIZE = 5;
 const RULES_VERSION = 1;
 const NOVA_AT = 26;
@@ -1100,6 +1100,7 @@ function makeRgbaRaster(width, height) {
 
 const FONT_SIZES = Object.keys(OGP_FONT_ATLAS.sizes).map(Number).sort((a, b) => a - b);
 const FONT_ALPHA_CACHE = new Map();
+const FONT_VISUAL_BOUNDS_CACHE = new Map();
 
 function nearestFontSize(size) {
   return FONT_SIZES.reduce((best, candidate) =>
@@ -1164,6 +1165,60 @@ function drawAtlasText(raster, text, x, y, size, color, options = {}) {
     }
     cursor += glyph.a + letterSpacing;
   }
+}
+
+function glyphVisualBounds(glyph) {
+  if (FONT_VISUAL_BOUNDS_CACHE.has(glyph.b)) return FONT_VISUAL_BOUNDS_CACHE.get(glyph.b);
+  const alpha = glyphAlpha(glyph);
+  let minX = glyph.w;
+  let minY = glyph.h;
+  let maxX = -1;
+  let maxY = -1;
+  for (let gy = 0; gy < glyph.h; gy++) {
+    for (let gx = 0; gx < glyph.w; gx++) {
+      if (alpha[gy * glyph.w + gx] <= 8) continue;
+      minX = Math.min(minX, gx);
+      minY = Math.min(minY, gy);
+      maxX = Math.max(maxX, gx);
+      maxY = Math.max(maxY, gy);
+    }
+  }
+  const bounds = maxX < 0 ? null : { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 };
+  FONT_VISUAL_BOUNDS_CACHE.set(glyph.b, bounds);
+  return bounds;
+}
+
+function atlasTextVisualBounds(text, size, letterSpacing = 0) {
+  let cursor = 0;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const char of String(text)) {
+    const { glyph } = fontGlyph(size, char);
+    const bounds = glyphVisualBounds(glyph);
+    if (bounds) {
+      minX = Math.min(minX, cursor + bounds.minX);
+      minY = Math.min(minY, bounds.minY);
+      maxX = Math.max(maxX, cursor + bounds.maxX);
+      maxY = Math.max(maxY, bounds.maxY);
+    }
+    cursor += glyph.a + letterSpacing;
+  }
+  if (!Number.isFinite(minX)) {
+    const fallback = fontGlyph(size, " ").glyph;
+    return { minX: 0, minY: 0, maxX: 0, maxY: fallback.h, width: atlasTextWidth(text, size, letterSpacing), height: fallback.h };
+  }
+  return { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+function drawAtlasTextVisualCentered(raster, text, x, y, size, color, options = {}) {
+  const letterSpacing = options.letterSpacing || 0;
+  const bounds = atlasTextVisualBounds(text, size, letterSpacing);
+  const left = x - (bounds.minX + bounds.width / 2);
+  const top = y - (bounds.minY + bounds.height / 2);
+  const { align: _align, ...drawOptions } = options;
+  drawAtlasText(raster, text, left, top, size, color, { ...drawOptions, letterSpacing });
 }
 
 function makeRaster(width, height, bg = OGP.BG) {
@@ -1556,15 +1611,16 @@ function drawSmoothOgpTile(raster, cell, r, c) {
     ? [Math.round(34 * growthBoost), 34, 28, 22]
     : [28, 22, 18];
   const symbolSize = fitAtlasFontSize(symbol, maxSymbolWidth, symbolCandidates);
-  const symbolY = rect.y + rect.h * 0.46 - symbolSize * 0.48;
+  const symbolCenterX = rect.x + rect.w / 2;
+  const symbolCenterY = rect.y + rect.h * 0.46;
   if (cell?.value >= HOLE_AT) {
-    drawAtlasText(raster, symbol, rect.x + rect.w / 2 + 1, symbolY + 1, symbolSize, [0, 0, 0], { align: "center", opacity: 0.35 });
-    drawAtlasText(raster, symbol, rect.x + rect.w / 2, symbolY, symbolSize, text, { align: "center", opacity: 0.96 });
+    drawAtlasTextVisualCentered(raster, symbol, symbolCenterX + 1, symbolCenterY + 1, symbolSize, [0, 0, 0], { opacity: 0.35 });
+    drawAtlasTextVisualCentered(raster, symbol, symbolCenterX, symbolCenterY, symbolSize, text, { opacity: 0.96 });
   } else {
     if (growthT(cell || { value: 1 }) > 0.55) {
-      drawAtlasText(raster, symbol, rect.x + rect.w / 2 + 1, symbolY + 2, symbolSize, [0, 0, 0], { align: "center", opacity: 0.26 });
+      drawAtlasTextVisualCentered(raster, symbol, symbolCenterX + 1, symbolCenterY + 2, symbolSize, [0, 0, 0], { opacity: 0.26 });
     }
-    drawAtlasText(raster, symbol, rect.x + rect.w / 2, symbolY, symbolSize, text, { align: "center" });
+    drawAtlasTextVisualCentered(raster, symbol, symbolCenterX, symbolCenterY, symbolSize, text);
   }
 
   if (name) {
